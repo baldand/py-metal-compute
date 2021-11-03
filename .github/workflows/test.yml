@@ -15,5 +15,5 @@ jobs:
     - uses: actions/checkout@v2
     - name: Build
       run: ./build.sh
-    - name: Run tests
-      run: python3 test_basic.py
+    - name: Run
+      run: python3 test_action.py
