@@ -1,6 +1,6 @@
 from time import time as now
-
-import numpy as np
+from array import array
+import math
 
 import metalcompute as mc
 
@@ -23,8 +23,8 @@ invalid_program
 
 
 count = 1234567
-i = np.arange(count,dtype=np.float32)
-o = np.empty(shape=(count,), dtype=np.float32)
+i = array('f', range(count))
+o = array('f', [0 for i in range(count)])
 
 mc.init()
 
@@ -63,11 +63,11 @@ mc.run(i, o)
 e1 = now()
 
 s2 = now()
-oref = np.sin(i)
+oref = array('f',[math.sin(value) for value in i])
 e2 = now()
 
 print("Expected value:",oref[-1], "Received value:",o[-1])
 print("Metal compute took:",e1-s1,"s")
-print("Reference (numpy) compute took:",e2-s2,"s")
+print("Reference compute took:",e2-s2,"s")
 
 mc.release()
