@@ -1,6 +1,6 @@
 # metalcompute for Python
 
-![Build status](https://github.com/baldand/py-metal-compute/.github/workflows/test.yml/badge.svg)
+![Build status](https://github.com/baldand/py-metal-compute/actions/workflows/test.yml/badge.svg)
 
 A python library to run metal compute kernels on MacOS 12
 
