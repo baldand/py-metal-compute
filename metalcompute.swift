@@ -67,6 +67,8 @@ let NotReadyToRetrieve = -14
     let functionName = String(cString:functionNameRaw)
 
     let options = MTLCompileOptions();
+    options.fastMathEnabled = true
+    options.languageVersion = .version2_3
     do {
         let newLibrary = try lDevice.makeLibrary(source: program, options:options) 
         library = newLibrary
@@ -120,8 +122,9 @@ let NotReadyToRetrieve = -14
         encoder.setBuffer(lOutputBuffer, offset: 0, index: 1)
         let w = pipelineState.threadExecutionWidth
         let h = pipelineState.maxTotalThreadsPerThreadgroup / w
-        let numThreadgroups = MTLSize(width: (inputCount+(w*h-1))/(w*h), height: 1, depth: 1)
+        let numThreadgroups = MTLSize(width: (outputCount+(w*h-1))/(w*h), height: 1, depth: 1)
         let threadsPerThreadgroup = MTLSize(width: w*h, height: 1, depth: 1)
+        //print(numThreadgroups, threadsPerThreadgroup)
         encoder.dispatchThreadgroups(numThreadgroups, threadsPerThreadgroup: threadsPerThreadgroup)
         encoder.endEncoding()
         commandBuffer.commit()
@@ -143,6 +146,7 @@ let NotReadyToRetrieve = -14
     guard let lOutputBuffer = outputBuffer else { return NotReadyToRetrieve }
 
     let typedOutput = lOutputBuffer.contents().bindMemory(to: Float.self, capacity: outputCount)
+    //print(typedOutput[-1])
     output.initialize(from: typedOutput, count: outputCount)
 
     return Success
