@@ -143,6 +143,23 @@ mc_py_run(PyObject *self, PyObject *args)
     Py_RETURN_NONE;
 }
 
+static PyObject *
+mc_py_rerun(PyObject *self, PyObject *args)
+{
+    int ret = 0;
+    // Run compute without lock
+    Py_BEGIN_ALLOW_THREADS
+    ret = mc_sw_run();
+    Py_END_ALLOW_THREADS
+    
+    if (mc_err(ret)) {
+        return NULL;
+    }
+
+    Py_RETURN_NONE;
+}
+
+
 static PyMethodDef MetalComputeMethods[] = {
     {"init",  mc_py_init, METH_VARARGS,
      "init"},
@@ -152,6 +169,8 @@ static PyMethodDef MetalComputeMethods[] = {
      "compile"},
     {"run",  mc_py_run, METH_VARARGS,
      "run"},
+    {"rerun",  mc_py_rerun, METH_VARARGS,
+     "rerun"},
     {NULL, NULL, 0, NULL}        /* Sentinel */
 };
 
