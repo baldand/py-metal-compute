@@ -30,7 +30,7 @@ mc.init()
 
 # Check some error handling. Cannot run before compiling
 try:
-    mc.run(i, o)
+    mc.run(i, o, count)
     assert(false) # Should not reach here
 except mc.error:
     pass # Expected exception here
@@ -59,7 +59,7 @@ print("Calculating sin of",count,"values")
 s1 = now()
 
 # This should work. Arrays must be 1D float at the moment
-mc.run(i, o)
+mc.run(i, o, count)
 e1 = now()
 
 s2 = now()

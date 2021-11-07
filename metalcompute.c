@@ -15,7 +15,7 @@ static PyObject *MetalComputeError;
 int mc_sw_init();
 int mc_sw_release();
 int mc_sw_compile(const char* program, const char* functionName);
-int mc_sw_alloc(int icount, float* input, int ocount); // Allocate I/O buffers and fill input buffer
+int mc_sw_alloc(int icount, float* input, int iformat, int ocount, int oformat); // Allocate I/O buffers and fill input buffer
 int mc_sw_run();
 int mc_sw_retrieve(int ocount, float* output); // Copy results to output buffer
 char* mc_sw_get_compile_error(); // Must free after calling
@@ -35,6 +35,23 @@ const int CannotCreateCommandEncoder = -11;
 const int CannotCreatePipelineState = -12;
 const int IncorrectOutputCount = -13;
 const int NotReadyToRetrieve = -14;
+const int UnsupportedInputFormat = -15;
+const int UnsupportedOutputFormat = -16;
+// Reserved block for Swift level errors
+
+// Buffer formats
+const int FormatUnknown = -1;
+const int FormatI8 = 0;
+const int FormatU8 = 1;
+const int FormatI16 = 2;
+const int FormatU16 = 3;
+const int FormatI32 = 4;
+const int FormatU32 = 5;
+const int FormatI64 = 6;
+const int FormatU64 = 7;
+const int FormatF16 = 8;
+const int FormatF32 = 9;
+const int FormatF64 = 10;
 
 int mc_err(int ret) {
     // Map error codes to exception with string
@@ -57,6 +74,9 @@ int mc_err(int ret) {
             case CannotCreatePipelineState: errString = "Cannot create pipeline state"; break;
             case IncorrectOutputCount: errString = "Incorrect output count"; break;
             case NotReadyToRetrieve: errString = "Not ready to retrieve"; break;
+            case UnsupportedInputFormat: errString = "Unsupported input format"; break;
+            case UnsupportedOutputFormat: errString = "Unsupported output format"; break;
+            // C level errors below
         }
 
         if (ret == FailedToCompile) {
@@ -104,19 +124,61 @@ mc_py_compile(PyObject *self, PyObject *args)
     Py_RETURN_NONE;
 }
 
+int format_buf_to_mc(char* buf_format) {
+    if (buf_format == 0) {
+        // NULL -> "B" -> uint8
+        return FormatU8;
+    } else if (buf_format[0]=='f' && buf_format[1]==0) {
+        // OK "f" -> float32
+        return FormatF32;
+    } else if (buf_format[0]=='B' && buf_format[1]==0) {
+        // OK "B" -> uint8
+        return FormatU8;
+    } else {
+        // Unrecognized output format
+        return FormatUnknown;
+    }
+}
+
 static PyObject *
 mc_py_run(PyObject *self, PyObject *args)
 {
+    PyObject* input_object;
+    PyObject* output_object;
     Py_buffer input;
     Py_buffer output;
+    int kcount, ret = 0;
 
-    if (!PyArg_ParseTuple(args, "w*w*", &input, &output))
+    if (!PyArg_ParseTuple(args, "OOi", &input_object, &output_object, &kcount))
         return NULL;
+
+    ret = PyObject_GetBuffer(input_object, &input, PyBUF_FORMAT|PyBUF_ND|PyBUF_C_CONTIGUOUS);
+    if (ret != 0) {
+        mc_err(UnsupportedInputFormat);
+        return NULL;
+    }
+
+    ret = PyObject_GetBuffer(output_object, &output, PyBUF_FORMAT|PyBUF_WRITEABLE|PyBUF_ND|PyBUF_C_CONTIGUOUS);
+    if (ret != 0) {
+        mc_err(UnsupportedOutputFormat);
+        PyBuffer_Release(&input);
+        return NULL;
+    }
 
     int icount = input.len / input.itemsize;
     int ocount = output.len / output.itemsize;
     // Copy data into metal buffer and release input
-    int ret = mc_sw_alloc(icount, input.buf, ocount);
+
+    int input_format = format_buf_to_mc(input.format);
+    int output_format = format_buf_to_mc(output.format);
+    if (input_format == FormatUnknown) ret = UnsupportedInputFormat;
+    if (output_format == FormatUnknown) ret = UnsupportedOutputFormat;
+    if (mc_err(ret)) {
+        PyBuffer_Release(&input);
+        PyBuffer_Release(&output);
+        return NULL;
+    }
+    ret = mc_sw_alloc(icount, input.buf, input_format, ocount, output_format);
     PyBuffer_Release(&input);
     if (mc_err(ret)) {
         PyBuffer_Release(&output);
@@ -125,7 +187,7 @@ mc_py_run(PyObject *self, PyObject *args)
 
     // Run compute without lock
     Py_BEGIN_ALLOW_THREADS
-    ret = mc_sw_run();
+    ret = mc_sw_run(kcount);
     Py_END_ALLOW_THREADS
     
     if (mc_err(ret)) {
@@ -146,10 +208,15 @@ mc_py_run(PyObject *self, PyObject *args)
 static PyObject *
 mc_py_rerun(PyObject *self, PyObject *args)
 {
+    int kcount;
+
+    if (!PyArg_ParseTuple(args, "i", &kcount))
+        return NULL;
+
     int ret = 0;
     // Run compute without lock
     Py_BEGIN_ALLOW_THREADS
-    ret = mc_sw_run();
+    ret = mc_sw_run(kcount);
     Py_END_ALLOW_THREADS
     
     if (mc_err(ret)) {

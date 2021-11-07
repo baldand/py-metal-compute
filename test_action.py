@@ -21,7 +21,7 @@ try:
     print("Testing mc.run callable")
     i = array('f',[0,1])
     o = array('f',[0,1])
-    mc.run(i, o)
+    mc.run(i, o, 1)
     assert(false) # Should not reach here
 except mc.error:
     print("OK")

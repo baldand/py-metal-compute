@@ -13,18 +13,22 @@ kernel void test(const device float *in [[ buffer(0) ]],
                 uint id [[ thread_position_in_grid ]]) {
     float v1 = in[0] * .0001 + id * .00001;
     float v2 = v1 + .0001 + id * .00002;
+    float v3 = v1 + .0002 + id * .00003;
+    float v4 = v1 + .0003 + id * .00004;
 
     for (int i=0;i<2048;i++) {
 """
 
 kernel_step = """
-        v1 = v1 * v1 + .00001;
-        v2 = v2 * v2 - .00001;
+        v1 = v1 * v1;
+        v2 = v2 + v2;
+        v3 = v3 * v3;
+        v4 = v4 + v4;
 """
 
 kernel_end = """
     }
-    float v = v1 + v2;
+    float v = v1 + v2 + v3 + v4;
     out[id] = v;
 }
 """
@@ -38,10 +42,10 @@ mc.init()
 reps = 400
 mc.compile(kernel_start+kernel_step*reps+kernel_end, "test")
 i[0] = 0.42
-mc.run(i, o) # Run once to warm up
-mc.rerun() # Rerun once with same data
+mc.run(i, o, count) # Run once to warm up
+mc.rerun(count) # Rerun once with same data
 start = now()
-mc.rerun() # Profile this time
+mc.rerun(count) # Profile this time
 end = now()
 mc.release()
 
