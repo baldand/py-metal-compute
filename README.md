@@ -48,7 +48,7 @@ Running compute intensive Metal kernel to measure TFLOPS...
 Estimated GPU TFLOPS: 2.50825
 ```
 
-### Render an 3D image with raymarching
+### Render a 3D image with raymarching
 
 ```
 # Usage: python3 test_raymarch.py <width> <height> <output image file: PNG, BMP>
