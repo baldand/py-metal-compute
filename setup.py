@@ -4,10 +4,10 @@ import os
 
 def build_swift():
     print("Building swift part")
-    os.system("swiftc metalcompute.swift -emit-library -emit-module -target arm64-apple-macos12 -o libmetalcomputearm.dylib")
-    os.system("swiftc metalcompute.swift -emit-library -emit-module -target x86_64-apple-macos12 -o libmetalcomputex64.dylib")
-    os.system("lipo -create libmetalcomputearm.dylib libmetalcomputex64.dylib -o libmetalcompute.dylib")
-    os.system("rm -f metalcomputearm.* metalcomputex64.*")
+    os.system("swiftc metalcompute.swift -static -emit-library -target arm64-apple-macos12 -o metalcomputeswiftarm.a")
+    os.system("swiftc metalcompute.swift -static -emit-library -target x86_64-apple-macos12 -o metalcomputeswiftx64.a")
+    os.system("lipo -create metalcomputeswiftarm.a metalcomputeswiftx64.a -o metalcomputeswift.a")
+    os.system("rm -f metalcomputeswiftarm.* metalcomputeswiftx64.*")
 
 
 class build(build_module.build_ext):
@@ -23,6 +23,7 @@ setup(name="MetalCompute",
           ['metalcompute.c'], 
           extra_compile_args=["-mmacosx-version-min=12.0"],
           extra_link_args=["-mmacosx-version-min=12.0"],
-          library_dirs=["."],
-          libraries=["metalcompute"])],
+          library_dirs=[".","/usr/lib","/usr/lib/swift"],
+          libraries=["swiftFoundation","swiftMetal"],
+          extra_objects=["metalcomputeswift.a"])],
     )
