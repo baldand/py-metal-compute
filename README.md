@@ -56,7 +56,17 @@ Estimated GPU TFLOPS: 2.50825
 > python3 test_raymarch.py 1024 1024 raymarch.png
 Render took 0.0119569s
 ```
-    
+
+### Mandelbrot set
+
+```
+> python3 examples/mandelbrot.py
+Rendering mandelbrot set using Metal compute, res:4096x4096, iters:8192
+Render took 0.401446s
+Writing image to mandelbrot.png
+Image encoding took 1.35182s
+```
+
 ## Status
 
 This is an early version. 
