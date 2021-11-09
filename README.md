@@ -57,7 +57,7 @@ Estimated GPU TFLOPS: 2.50825
 Render took 0.0119569s
 ```
 
-# Mandelbrot set
+### Mandelbrot set
 
 ```
 > python3 examples/mandelbrot.py
