@@ -1,16 +1,22 @@
+#!python3
+
 import sys
 from time import time as now
 from array import array
 
-import PIL
-from PIL.Image import frombuffer
+try:
+    import PIL
+    from PIL.Image import frombuffer
+except:
+    print("Please install python package 'pillow' in order to run this")
+    sys.exit()
 
 import metalcompute as mc
 
-w,h = 4096, 4096
+width,height = 4096, 4096
 if len(sys.argv) > 2:
-    w,h = int(sys.argv[1]), int(sys.argv[2])
-outname = "mandelbrot.png"
+    width,height = int(sys.argv[1]), int(sys.argv[2])
+outname = "mandelbrot.jpg"
 if len(sys.argv) > 3:
     outname = sys.argv[3]
 
@@ -56,15 +62,15 @@ end = """}
     out[id] = uchar4(uchar3(col*255.),255);
 }
 """
-print(f"Rendering mandelbrot set using Metal compute, res:{w}x{h}, iters:{outer_iter * inner_iter}")
+print(f"Rendering mandelbrot set using Metal compute, res:{width}x{height}, iters:{outer_iter * inner_iter}")
 
 mc.init()
 
 mc.compile(start + loop_start + step * inner_iter + end, "mandelbrot")
-output = bytearray(h*w*4)
+image = bytearray(height*width*4)
 
 start_render = now()
-mc.run(array('f',[w,h]), output, w*h)
+mc.run(array('f',[width,height]), image, width*height)
 end_render = now()
 
 mc.release()
@@ -73,7 +79,12 @@ print(f"Render took {end_render - start_render:3.6}s")
 
 print(f"Writing image to {outname}")
 start_write = now()
-frombuffer("RGBA",(w,h),data=output).save(outname)
+
+image_buf = frombuffer("RGBA",(width,height),data=image)
+if outname.lower().endswith("jpg"):
+    image_buf = image_buf.convert('RGB')
+image_buf.save(outname)
+
 end_write = now()
 
 print(f"Image encoding took {end_write - start_write:3.6}s")

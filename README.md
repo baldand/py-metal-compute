@@ -2,15 +2,34 @@
 
 ![Build status](https://github.com/baldand/py-metal-compute/actions/workflows/test.yml/badge.svg?branch=main)
 
-A python library to run metal compute kernels on MacOS
+A python library to run metal compute kernels on MacOS 12.0 (Monterey)
 
-## Usage
+## Installations
+
+Install latest stable release from PyPI:
+
+```
+> python3 -m pip install metalcompute
+```
+
+Install latest unstable version from Github:
+
+```
+> python3 -m pip install git+https://github.com/baldand/py-metal-compute.git
+```
+
+Install locally from source:
+
+```
+> python3 -m pip install -e .
+```
+
+## Basic test
 
 Example execution from M1-based Mac running MacOS 12.0:
 
 ```
-> ./build.sh
-> python3 test_basic.py
+> python3 tests/basic.py
 Calculating sin of 1234567 values
 Expected value: 0.9805107116699219 Received value: 0.9807852506637573
 Metal compute took: 0.0040209293365478516 s
@@ -38,12 +57,12 @@ mc.release()
 
 ```
 
-## Example
+## Examples
 
 ### Measure TFLOPS of GPU
 
 ```
-> python3 test_flops.py
+> metalcompute-measure-flops
 Running compute intensive Metal kernel to measure TFLOPS...
 Estimated GPU TFLOPS: 2.50825
 ```
@@ -51,24 +70,28 @@ Estimated GPU TFLOPS: 2.50825
 ### Render a 3D image with raymarching
 
 ```
-# Usage: python3 test_raymarch.py <width> <height> <output image file: PNG, BMP>
+# Usage: metalcompute-raymarch [<width> <height> [<output image file: PNG, JPG>]]
 
-> python3 test_raymarch.py 1024 1024 raymarch.png
+> metalcompute-raymarch.py 1024 1024 raymarch.jpg
 Render took 0.0119569s
 ```
+
+![Raymarched spheres scene](images/raymarch.jpg)
 
 ### Mandelbrot set
 
 ```
-> python3 examples/mandelbrot.py
+# Usage: metalcompute-mandelbrot [<width> <height> [<output image file: PNG, JPG>]]
+
+> metalcompute-mandelbrot
 Rendering mandelbrot set using Metal compute, res:4096x4096, iters:8192
 Render took 0.401446s
 Writing image to mandelbrot.png
 Image encoding took 1.35182s
 ```
 
+![Mandelbrot set](images/mandelbrot.jpg)
+
 ## Status
 
-This is an early version. 
-
-Not widely tested yet.
+This is an early preview version. 

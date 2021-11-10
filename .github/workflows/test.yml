@@ -13,7 +13,11 @@ jobs:
 
     steps:
     - uses: actions/checkout@v2
+    - name: Install build dependencies
+      run: pip install build
     - name: Build
-      run: ./build.sh
-    - name: Run
-      run: python3 test_action.py
+      run: python3 -m build
+    - name: Install wheel
+      run: pip install dist/*.whl
+    - name: Test
+      run: python3 tests/action.py

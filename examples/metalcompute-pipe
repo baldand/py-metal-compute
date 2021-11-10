@@ -1,0 +1,32 @@
+#!python3
+
+import sys
+import argparse
+
+import metalcompute as mc
+
+kernel_body = sys.argv[1]
+
+kernel_start = """#include <metal_stdlib>
+using namespace metal;
+
+kernel void pipe(const device uchar *in [[ buffer(0) ]],
+                device uchar  *out [[ buffer(1) ]],
+                uint id [[ thread_position_in_grid ]]) {
+"""
+
+kernel = kernel_start + kernel_body + ";}\n"
+
+mc.init()
+mc.compile(kernel,"pipe")
+
+while 1:
+    in_data = sys.stdin.buffer.read()
+    if len(in_data) > 0:
+        out_data = bytearray(in_data)
+        mc.run(in_data, out_data, len(in_data))
+        sys.stdout.buffer.write(out_data)
+    else:
+        break
+
+mc.release()
