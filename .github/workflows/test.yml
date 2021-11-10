@@ -7,13 +7,17 @@ on:
     branches: [ main ]
 
 jobs:
-  build:
+  test:
 
     runs-on: macos-latest
 
     steps:
     - uses: actions/checkout@v2
-    - name: Build
-      run: ./build.sh
-    - name: Run
-      run: python3 test_action.py
+    - uses: actions/setup-python@v2
+      with:
+        python-version: '3.8'
+        architecture: 'x64'
+    - name: Local install for testing
+      run: python3 -m pip install .
+    - name: Test
+      run: python3 tests/action.py
