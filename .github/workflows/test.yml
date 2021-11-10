@@ -26,7 +26,7 @@ jobs:
     - name: Test
       run: python3 tests/action.py
     - name: Archive built packages
-        uses: actions/upload-artifact@v2
-        with:
-          name: Latest metalcompute packages
-          path: dist/*
+      uses: actions/upload-artifact@v2
+      with:
+        name: Latest metalcompute packages
+        path: dist/*
