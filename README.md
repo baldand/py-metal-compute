@@ -2,7 +2,7 @@
 
 ![Build status](https://github.com/baldand/py-metal-compute/actions/workflows/test.yml/badge.svg?branch=main)
 
-A python library to run metal compute kernels on MacOS 12.0 (Monterey)
+A python library to run metal compute kernels on macOS 12 (Monterey)
 
 ## Installations
 
@@ -21,12 +21,12 @@ Install latest unstable version from Github:
 Install locally from source:
 
 ```
-> python3 -m pip install -e .
+> python3 -m pip install .
 ```
 
 ## Basic test
 
-Example execution from M1-based Mac running MacOS 12.0:
+Example execution from M1-based Mac running macOS 12:
 
 ```
 > python3 tests/basic.py
