@@ -54,9 +54,9 @@ for device_index, device in enumerate(devices):
     mc.rerun(count) # Profile this time
     end = now()
     mc.release()
+    ops_per_kernel = reps*4*2048 + 7 # 24 * 10000 + 1 # 33
+    ops_per_run = 1 * ops_per_kernel * count
+    time_per_run = end - start
+    ops_per_sec = ops_per_run / time_per_run
+    print(f"Estimated GPU TFLOPS: {ops_per_sec/1e12:1.6}")
 
-ops_per_kernel = reps*4*2048 + 7 # 24 * 10000 + 1 # 33
-ops_per_run = 1 * ops_per_kernel * count
-time_per_run = end - start
-ops_per_sec = ops_per_run / time_per_run
-print(f"Estimated GPU TFLOPS: {ops_per_sec/1e12:1.6}")
