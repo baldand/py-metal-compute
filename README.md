@@ -41,8 +41,13 @@ Reference compute took: 0.1068720817565918 s
 ```
 import metalcompute as mc
 
+devices = mc.get_devices()
+# Get list of available Metal devices
+
 mc.init() 
-# Call before use
+# Call before use. Will open default Metal device
+# or to pick a specific device:
+# mc.init(device_index)
 
 mc.compile(program, function_name)
 # Will raise exception with details if metal kernel has errors

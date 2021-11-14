@@ -93,6 +93,16 @@ var compileError:String = ""
 
 
 @_cdecl("mc_sw_release") public func mc_sw_release() -> RetCode {
+    inputBuffer = nil
+    outputBuffer = nil
+    function = nil
+    library = nil
+    device = nil
+    readyToCompile = false
+    readyToCompute = false
+    readyToRun = false
+    readyToRetrieve = false
+
     return Success
 }
 
