@@ -1,0 +1,5 @@
+// mc_c2sw/module.modulemap
+module mc_c2sw {
+    header "mc_c2sw.h"
+    export *
+}
