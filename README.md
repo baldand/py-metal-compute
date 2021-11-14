@@ -2,7 +2,7 @@
 
 ![Build status](https://github.com/baldand/py-metal-compute/actions/workflows/test.yml/badge.svg?branch=main)
 
-A python library to run metal compute kernels on macOS 12 (Monterey)
+A python library to run metal compute kernels on macOS >= 11
 
 ## Installations
 
@@ -41,8 +41,13 @@ Reference compute took: 0.1068720817565918 s
 ```
 import metalcompute as mc
 
+devices = mc.get_devices()
+# Get list of available Metal devices
+
 mc.init() 
-# Call before use
+# Call before use. Will open default Metal device
+# or to pick a specific device:
+# mc.init(device_index)
 
 mc.compile(program, function_name)
 # Will raise exception with details if metal kernel has errors
@@ -63,8 +68,9 @@ mc.release()
 
 ```
 > metalcompute-measure-flops
+Using device: Apple M1 (unified memory=True)
 Running compute intensive Metal kernel to measure TFLOPS...
-Estimated GPU TFLOPS: 2.50825
+Estimated GPU TFLOPS: 2.55613
 ```
 
 ### Render a 3D image with raymarching

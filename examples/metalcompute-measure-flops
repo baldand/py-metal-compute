@@ -39,20 +39,24 @@ count = 1024*1024
 i = array('f', [0])
 o = array('f', [0 for i in range(count)])
 
-print("Running compute intensive Metal kernel to measure TFLOPS...")
-mc.init()
-reps = 400
-mc.compile(kernel_start+kernel_step*reps+kernel_end, "test")
-i[0] = 0.42
-mc.run(i, o, count) # Run once to warm up
-mc.rerun(count) # Rerun once with same data
-start = now()
-mc.rerun(count) # Profile this time
-end = now()
-mc.release()
+devices = mc.get_devices()
 
-ops_per_kernel = reps*4*2048 + 7 # 24 * 10000 + 1 # 33
-ops_per_run = 1 * ops_per_kernel * count
-time_per_run = end - start
-ops_per_sec = ops_per_run / time_per_run
-print(f"Estimated GPU TFLOPS: {ops_per_sec/1e12:1.6}")
+for device_index, device in enumerate(devices):
+    print("Using device:",device.deviceName,f"(unified memory={device.hasUnifiedMemory})")
+    print("Running compute intensive Metal kernel to measure TFLOPS...")
+    mc.init(device_index)
+    reps = 400
+    mc.compile(kernel_start+kernel_step*reps+kernel_end, "test")
+    i[0] = 0.42
+    mc.run(i, o, count) # Run once to warm up
+    mc.rerun(count) # Rerun once with same data
+    start = now()
+    mc.rerun(count) # Profile this time
+    end = now()
+    mc.release()
+    ops_per_kernel = reps*4*2048 + 7 # 24 * 10000 + 1 # 33
+    ops_per_run = 1 * ops_per_kernel * count
+    time_per_run = end - start
+    ops_per_sec = ops_per_run / time_per_run
+    print(f"Estimated GPU TFLOPS: {ops_per_sec/1e12:1.6}")
+

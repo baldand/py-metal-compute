@@ -9,51 +9,47 @@ Python extension to use Metal for compute
 #define PY_SSIZE_T_CLEAN
 #include <Python.h>
 
-static PyObject *MetalComputeError;
+#include "metalcompute.h"
 
-/* C interface to Swift library */
-int mc_sw_init();
-int mc_sw_release();
-int mc_sw_compile(const char* program, const char* functionName);
-int mc_sw_alloc(int icount, float* input, int iformat, int ocount, int oformat); // Allocate I/O buffers and fill input buffer
-int mc_sw_run();
-int mc_sw_retrieve(int ocount, float* output); // Copy results to output buffer
-char* mc_sw_get_compile_error(); // Must free after calling
+// Value symbols are shared with Swift, so declared extern in shared header and defined here
 
-const int Success = 0;
-const int CannotCreateDevice = -1;
-const int CannotCreateCommandQueue = -2;
-const int NotReadyToCompile = -3;
-const int FailedToCompile = -4;
-const int FailedToFindFunction = -5;
-const int NotReadyToCompute = -6;
-const int FailedToMakeInputBuffer = -7;
-const int FailedToMakeOutputBuffer = -8;
-const int NotReadyToRun = -9;
-const int CannotCreateCommandBuffer = -10;
-const int CannotCreateCommandEncoder = -11;
-const int CannotCreatePipelineState = -12;
-const int IncorrectOutputCount = -13;
-const int NotReadyToRetrieve = -14;
-const int UnsupportedInputFormat = -15;
-const int UnsupportedOutputFormat = -16;
+const RetCode Success = 0;
+const RetCode CannotCreateDevice = -1;
+const RetCode CannotCreateCommandQueue = -2;
+const RetCode NotReadyToCompile = -3;
+const RetCode FailedToCompile = -4;
+const RetCode FailedToFindFunction = -5;
+const RetCode NotReadyToCompute = -6;
+const RetCode FailedToMakeInputBuffer = -7;
+const RetCode FailedToMakeOutputBuffer = -8;
+const RetCode NotReadyToRun = -9;
+const RetCode CannotCreateCommandBuffer = -10;
+const RetCode CannotCreateCommandEncoder = -11;
+const RetCode CannotCreatePipelineState = -12;
+const RetCode IncorrectOutputCount = -13;
+const RetCode NotReadyToRetrieve = -14;
+const RetCode UnsupportedInputFormat = -15;
+const RetCode UnsupportedOutputFormat = -16;
 // Reserved block for Swift level errors
 
 // Buffer formats
-const int FormatUnknown = -1;
-const int FormatI8 = 0;
-const int FormatU8 = 1;
-const int FormatI16 = 2;
-const int FormatU16 = 3;
-const int FormatI32 = 4;
-const int FormatU32 = 5;
-const int FormatI64 = 6;
-const int FormatU64 = 7;
-const int FormatF16 = 8;
-const int FormatF32 = 9;
-const int FormatF64 = 10;
+const long FormatUnknown = -1;
+const long FormatI8 = 0;
+const long FormatU8 = 1;
+const long FormatI16 = 2;
+const long FormatU16 = 3;
+const long FormatI32 = 4;
+const long FormatU32 = 5;
+const long FormatI64 = 6;
+const long FormatU64 = 7;
+const long FormatF16 = 8;
+const long FormatF32 = 9;
+const long FormatF64 = 10;
 
-int mc_err(int ret) {
+
+static PyObject *MetalComputeError;
+
+RetCode mc_err(RetCode ret) {
     // Map error codes to exception with string
     if (ret != Success) {
 
@@ -92,16 +88,19 @@ int mc_err(int ret) {
 }
 
 static PyObject *
-mc_py_init(PyObject *self, PyObject *args)
-{
-    if (mc_err(mc_sw_init()))
+mc_py_1_init(PyObject *self, PyObject *args)
+ {
+    uint64_t device_index = -1; // Default device
+    PyArg_ParseTuple(args, "|L", &device_index); // Device is optional argument
+
+    if (mc_err(mc_sw_init(device_index)))
         return NULL;
 
     Py_RETURN_NONE;
 }
 
 static PyObject *
-mc_py_release(PyObject *self, PyObject *args)
+mc_py_1_release(PyObject *self, PyObject *args)
 {
     if (mc_err(mc_sw_release()))
         return NULL;
@@ -110,7 +109,7 @@ mc_py_release(PyObject *self, PyObject *args)
 }
 
 static PyObject *
-mc_py_compile(PyObject *self, PyObject *args)
+mc_py_1_compile(PyObject *self, PyObject *args)
 {
     const char *program;
     const char *functionName;
@@ -141,7 +140,7 @@ int format_buf_to_mc(char* buf_format) {
 }
 
 static PyObject *
-mc_py_run(PyObject *self, PyObject *args)
+mc_py_1_run(PyObject *self, PyObject *args)
 {
     PyObject* input_object;
     PyObject* output_object;
@@ -206,7 +205,7 @@ mc_py_run(PyObject *self, PyObject *args)
 }
 
 static PyObject *
-mc_py_rerun(PyObject *self, PyObject *args)
+mc_py_1_rerun(PyObject *self, PyObject *args)
 {
     int kcount;
 
@@ -226,18 +225,54 @@ mc_py_rerun(PyObject *self, PyObject *args)
     Py_RETURN_NONE;
 }
 
+static PyTypeObject *DeviceItem;
+
+static PyObject *
+mc_py_2_get_devices(PyObject *self, PyObject *args)
+ {
+    mc_shared share;
+    if (mc_err(mc_sw_count_devs(&share)))
+        return NULL;
+    PyObject *dev_result = PyTuple_New(share.dev_count);
+    for (int i=0; i<share.dev_count; i++) {
+        PyObject* device_item = PyStructSequence_New(DeviceItem);
+        PyObject* name = PyUnicode_FromString(share.devs[i].name);
+        Py_INCREF(name);
+        PyStructSequence_SetItem(device_item, 0, name);
+        free(share.devs[i].name); // Done with Swift-provided string
+        PyObject* working = PyLong_FromLongLong(share.devs[i].recommendedMaxWorkingSetSize);
+        Py_INCREF(working);
+        PyStructSequence_SetItem(device_item, 1, working);
+        PyObject* transfer = PyLong_FromLongLong(share.devs[i].maxTransferRate);
+        Py_INCREF(transfer);
+        PyStructSequence_SetItem(device_item, 2, transfer);
+        PyObject* unified = PyBool_FromLong(share.devs[i].hasUnifiedMemory);
+        Py_INCREF(unified);
+        PyStructSequence_SetItem(device_item, 3, unified);
+        PyTuple_SetItem(dev_result, i, device_item);
+    }
+    free(share.devs); // Done with the Swift-provided array
+    
+    return dev_result;
+}
 
 static PyMethodDef MetalComputeMethods[] = {
-    {"init",  mc_py_init, METH_VARARGS,
+    // v0.1 functions - simple/deprecated
+    {"init",  mc_py_1_init, METH_VARARGS,
      "init"},
-    {"release",  mc_py_release, METH_VARARGS,
+    {"release",  mc_py_1_release, METH_VARARGS,
      "release"},
-    {"compile",  mc_py_compile, METH_VARARGS,
+    {"compile",  mc_py_1_compile, METH_VARARGS,
      "compile"},
-    {"run",  mc_py_run, METH_VARARGS,
+    {"run",  mc_py_1_run, METH_VARARGS,
      "run"},
-    {"rerun",  mc_py_rerun, METH_VARARGS,
+    {"rerun",  mc_py_1_rerun, METH_VARARGS,
      "rerun"},
+
+    // v0.2 functions - more flexible/current
+    { "get_devices", mc_py_2_get_devices, METH_VARARGS, "get_devices" },
+
+    // End
     {NULL, NULL, 0, NULL}        /* Sentinel */
 };
 
@@ -250,9 +285,27 @@ static struct PyModuleDef metalcomputemodule = {
     MetalComputeMethods
 };
 
+void define_device_item_type() {
+    PyStructSequence_Field fields[5] = {
+        { .name="deviceName", .doc="" },
+        { .name="recommendedWorkingSetSize", .doc="" },
+        { .name="maxTransferRate", .doc="" },
+        { .name="hasUnifiedMemory", .doc="" },
+        { .name=0, .doc=NULL }
+    };
+    PyStructSequence_Desc dev_item_desc = {
+        .name = "metalcompute_device",
+        .doc = "",
+        .fields = fields,
+        .n_in_sequence = 4 };
+    DeviceItem = PyStructSequence_NewType(&dev_item_desc);
+}
+
 PyMODINIT_FUNC
 PyInit_metalcompute(void)
 {
+    //printf("(creating stdout)\n"); // Uncomment if debugging swift code with print statements
+
     PyObject *m;
 
     m = PyModule_Create(&metalcomputemodule);
@@ -267,6 +320,8 @@ PyInit_metalcompute(void)
         Py_DECREF(m);
         return NULL;
     }
+
+    define_device_item_type();
 
     return m;
 }

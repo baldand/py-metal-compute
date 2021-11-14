@@ -8,6 +8,49 @@ Swift backend for Python extension to use Metal for compute
 
 import MetalKit
 
+import mc_c2sw // Bridging C to Swift
+
+let Success:RetCode = 0
+let CannotCreateDevice:RetCode = -1
+let CannotCreateCommandQueue:RetCode = -2
+let NotReadyToCompile:RetCode = -3
+let FailedToCompile:RetCode = -4
+let FailedToFindFunction:RetCode = -5
+let NotReadyToCompute:RetCode = -6
+let FailedToMakeInputBuffer:RetCode = -7
+let FailedToMakeOutputBuffer:RetCode = -8
+let NotReadyToRun:RetCode = -8
+let CannotCreateCommandBuffer:RetCode = -9
+let CannotCreateCommandEncoder:RetCode = -10
+let CannotCreatePipelineState:RetCode = -11
+let IncorrectOutputCount:RetCode = -12
+let NotReadyToRetrieve:RetCode = -13
+let UnsupportedInputFormat:RetCode = -14
+let UnsupportedOutputFormat:RetCode = -15
+// Reserved block for Swift level errors
+
+// Buffer formats
+let FormatUnknown = -1
+let FormatI8 = 0
+let FormatU8 = 1
+let FormatI16 = 2
+let FormatU16 = 3
+let FormatI32 = 4
+let FormatU32 = 5
+let FormatI64 = 6
+let FormatU64 = 7
+let FormatF16 = 8
+let FormatF32 = 9
+let FormatF64 = 10
+
+
+// -------------------------------------------------
+// v0.1 of API - simple functions and retained state
+//
+// Can only be used for single kernel 
+// sequential synchronous (non-pipelined) execution
+// Data must be copied in/out (copy overhead)
+
 var device:MTLDevice?
 var commandQueue:MTLCommandQueue?
 var library:MTLLibrary?
@@ -24,43 +67,19 @@ var readyToRun = false
 var readyToRetrieve = false
 var compileError:String = ""
 
-// Integers so we can understand these from C/Python sidea
-let Success = 0
-let CannotCreateDevice = -1
-let CannotCreateCommandQueue = -2
-let NotReadyToCompile = -3
-let FailedToCompile = -4
-let FailedToFindFunction = -5
-let NotReadyToCompute = -6
-let FailedToMakeInputBuffer = -7
-let FailedToMakeOutputBuffer = -8
-let NotReadyToRun = -9
-let CannotCreateCommandBuffer = -10
-let CannotCreateCommandEncoder = -11
-let CannotCreatePipelineState = -12
-let IncorrectOutputCount = -13
-let NotReadyToRetrieve = -14
-let UnsupportedInputFormat = -15
-let UnsupportedOutputFormat = -16
-
-// Buffer formats
-let FormatUnknown = -1
-let FormatI8 = 0
-let FormatU8 = 1
-let FormatI16 = 2
-let FormatU16 = 3
-let FormatI32 = 4
-let FormatU32 = 5
-let FormatI64 = 6
-let FormatU64 = 7
-let FormatF16 = 8
-let FormatF32 = 9
-let FormatF64 = 10
-
-@_cdecl("mc_sw_init") public func mc_sw_init() -> Int {
-    guard let newDevice = MTLCreateSystemDefaultDevice() else {
-        return CannotCreateDevice 
+@_cdecl("mc_sw_init") public func mc_sw_init(device_index_i64:Int64) -> RetCode {
+    let device_index = Int(device_index_i64)
+    let devices = MTLCopyAllDevices()
+    guard let defaultDevice = MTLCreateSystemDefaultDevice() else {
+        return CannotCreateDevice
     }
+    if devices.count == 0 {
+        return CannotCreateDevice
+    }
+    if device_index >= devices.count {
+        return CannotCreateDevice
+    }
+    let newDevice = device_index < 0 ? defaultDevice : devices[device_index] 
     device = newDevice
     guard let newCommandQueue = newDevice.makeCommandQueue() else {
         return CannotCreateCommandQueue 
@@ -72,11 +91,22 @@ let FormatF64 = 10
     return Success
 }
 
-@_cdecl("mc_sw_release") public func mc_sw_release() -> Int {
+
+@_cdecl("mc_sw_release") public func mc_sw_release() -> RetCode {
+    inputBuffer = nil
+    outputBuffer = nil
+    function = nil
+    library = nil
+    device = nil
+    readyToCompile = false
+    readyToCompute = false
+    readyToRun = false
+    readyToRetrieve = false
+
     return Success
 }
 
-@_cdecl("mc_sw_compile") public func mc_sw_compile(programRaw: UnsafePointer<CChar>, functionNameRaw: UnsafePointer<CChar>) -> Int {
+@_cdecl("mc_sw_compile") public func mc_sw_compile(programRaw: UnsafePointer<CChar>, functionNameRaw: UnsafePointer<CChar>) -> RetCode {
     guard readyToCompile else { return NotReadyToCompile }
     guard let lDevice = device else { return NotReadyToCompile }
 
@@ -113,7 +143,7 @@ func get_stride(_ format: Int) -> Int {
     }
 }
 
-@_cdecl("mc_sw_alloc") public func mc_sw_alloc(icount: Int, input: UnsafeRawPointer, iformat: Int, ocount: Int, oformat: Int) -> Int {
+@_cdecl("mc_sw_alloc") public func mc_sw_alloc(icount: Int, input: UnsafeRawPointer, iformat: Int, ocount: Int, oformat: Int) -> RetCode {
     // Allocate input/output buffers for run
     // Separating this step allows python global lock to be released for the actual run which does not need any python objects
     guard readyToCompute else { return NotReadyToCompute }
@@ -138,7 +168,7 @@ func get_stride(_ format: Int) -> Int {
     return Success
 }
 
-@_cdecl("mc_sw_run") public func mc_sw_run(kcount:Int) -> Int {
+@_cdecl("mc_sw_run") public func mc_sw_run(kcount:Int) -> RetCode {
     // Execute the configured compute task, waiting for completion
     guard readyToRun else { return NotReadyToRun }
     guard let lDevice = device else { return NotReadyToRun }
@@ -173,7 +203,7 @@ func get_stride(_ format: Int) -> Int {
     return Success
 }
 
-@_cdecl("mc_sw_retrieve") public func mc_sw_retrieve(ocount:Int, output: UnsafeMutableRawPointer) -> Int {
+@_cdecl("mc_sw_retrieve") public func mc_sw_retrieve(ocount:Int, output: UnsafeMutableRawPointer) -> RetCode {
     // Return result of compute task
     guard readyToRetrieve else { return NotReadyToRetrieve }
     guard ocount == outputCount else { return IncorrectOutputCount }
@@ -188,3 +218,50 @@ func get_stride(_ format: Int) -> Int {
     return strdup(compileError)
 }
 
+// ------------------------------
+// v0.2 of the API - object based
+//
+// - Multiple devices can be opened
+// - Buffers are allocated and filled/emptied externally
+// - Multiple kernel objects are possible
+// - Kernels can be pipelined to devices
+// - Callbacks when kernels are completed and data is available
+
+struct mc_sw_fn {
+    var fn:MTLFunction;
+}
+
+struct mc_sw_kern {
+    var mc_sw_fns:[mc_sw_fn]
+}
+
+struct mc_sw_dev {
+    var dev:MTLDevice;
+    var mc_sw_kerns:[mc_sw_kern];
+};
+
+// Index of next object
+var mc_next_index:Int = 4242; 
+var mc_devs:[mc_sw_dev] = [];
+
+@_cdecl("mc_sw_count_devs") public func mc_sw_get_devices(shared: UnsafeMutablePointer<mc_shared>) -> RetCode {
+    let metal_devices = MTLCopyAllDevices();
+
+    shared[0].dev_count = Int64(metal_devices.count);
+    let dev_array = UnsafeMutablePointer<mc_dev>.allocate(capacity: metal_devices.count) // Must be freed by python  
+    shared[0].devs = dev_array 
+    for dev_index in 0..<metal_devices.count {
+        let dev = metal_devices[dev_index]
+        dev_array[dev_index].recommendedMaxWorkingSetSize = Int64(dev.recommendedMaxWorkingSetSize);
+        dev_array[dev_index].maxTransferRate = Int64(dev.maxTransferRate);
+        dev_array[dev_index].hasUnifiedMemory = Bool(dev.hasUnifiedMemory);
+        dev_array[dev_index].name = strdup(dev.name) // Copy - must be released by python side
+    }
+
+    return Success
+}
+
+@_cdecl("mc_sw_open_dev") public func mc_sw_open_dev() -> RetCode {
+    // Allocate a HW buffer of the requested size
+    return Success
+}

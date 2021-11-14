@@ -8,6 +8,19 @@ import metalcompute as mc
 # We can at least import the build library and check API calls fail with valid errors
 
 try:
+    print("Testing mc.get_devices callable")
+    devices = mc.get_devices()
+    print("Devices:")
+    for d in devices:
+        print(d)
+    # This pass executed in HW
+except mc.error:
+    # This pass executed in CI
+    pass
+print("OK")
+
+
+try:
     print("Testing mc.init callable")
     mc.init()
     # This pass exeddcuted in HW
