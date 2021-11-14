@@ -90,7 +90,10 @@ RetCode mc_err(RetCode ret) {
 static PyObject *
 mc_py_1_init(PyObject *self, PyObject *args)
  {
-    if (mc_err(mc_sw_init()))
+    uint64_t device_index = -1; // Default device
+    PyArg_ParseTuple(args, "|L", &device_index); // Device is optional argument
+
+    if (mc_err(mc_sw_init(device_index)))
         return NULL;
 
     Py_RETURN_NONE;

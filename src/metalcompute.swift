@@ -67,10 +67,19 @@ var readyToRun = false
 var readyToRetrieve = false
 var compileError:String = ""
 
-@_cdecl("mc_sw_init") public func mc_sw_init() -> RetCode {
-    guard let newDevice = MTLCreateSystemDefaultDevice() else {
-        return CannotCreateDevice 
+@_cdecl("mc_sw_init") public func mc_sw_init(device_index_i64:Int64) -> RetCode {
+    let device_index = Int(device_index_i64)
+    let devices = MTLCopyAllDevices()
+    guard let defaultDevice = MTLCreateSystemDefaultDevice() else {
+        return CannotCreateDevice
     }
+    if devices.count == 0 {
+        return CannotCreateDevice
+    }
+    if device_index >= devices.count {
+        return CannotCreateDevice
+    }
+    let newDevice = device_index < 0 ? defaultDevice : devices[device_index] 
     device = newDevice
     guard let newCommandQueue = newDevice.makeCommandQueue() else {
         return CannotCreateCommandQueue 

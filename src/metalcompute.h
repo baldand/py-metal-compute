@@ -9,7 +9,7 @@
 
 typedef int64_t RetCode;
 
-RetCode mc_sw_init();
+RetCode mc_sw_init(uint64_t device_index);
 RetCode mc_sw_release();
 RetCode mc_sw_compile(const char* program, const char* functionName);
 RetCode mc_sw_alloc(int icount, float* input, int iformat, int ocount, int oformat); // Allocate I/O buffers and fill input buffer
