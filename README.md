@@ -68,8 +68,9 @@ mc.release()
 
 ```
 > metalcompute-measure-flops
+Using device: Apple M1 (unified memory=True)
 Running compute intensive Metal kernel to measure TFLOPS...
-Estimated GPU TFLOPS: 2.50825
+Estimated GPU TFLOPS: 2.55613
 ```
 
 ### Render a 3D image with raymarching
