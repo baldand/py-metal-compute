@@ -27,7 +27,13 @@ let IncorrectOutputCount:RetCode = -12
 let NotReadyToRetrieve:RetCode = -13
 let UnsupportedInputFormat:RetCode = -14
 let UnsupportedOutputFormat:RetCode = -15
-// Reserved block for Swift level errors
+
+// v2 errors
+let DeviceNotFound:RetCode = -1000
+let KernelNotFound:RetCode = -1001
+let FunctionNotFound:RetCode = -1002
+let CouldNotMakeBuffer:RetCode = -1003
+let BufferNotFound:RetCode = -1004
 
 // Buffer formats
 let FormatUnknown = -1
@@ -227,29 +233,49 @@ func get_stride(_ format: Int) -> Int {
 // - Kernels can be pipelined to devices
 // - Callbacks when kernels are completed and data is available
 
-struct mc_sw_fn {
-    var fn:MTLFunction;
+class mc_sw_buf {
+    let buf:MTLBuffer;
+    init(_ buf:MTLBuffer) {
+        self.buf = buf;
+    }
 }
 
-struct mc_sw_kern {
-    var mc_sw_fns:[mc_sw_fn]
+class mc_sw_fn {
+    let fn:MTLFunction;
+    init(_ fn:MTLFunction) {
+        self.fn = fn;
+    }
 }
 
-struct mc_sw_dev {
-    var dev:MTLDevice;
-    var mc_sw_kerns:[mc_sw_kern];
+class mc_sw_kern {
+    let lib:MTLLibrary;
+    var fns:[Int64:mc_sw_fn] = [:]
+    init(_ lib:MTLLibrary) {
+        self.lib = lib;
+    }
+}
+
+class mc_sw_dev {
+    let dev:MTLDevice;
+    let queue:MTLCommandQueue;
+    var kerns:[Int64:mc_sw_kern] = [:];
+    var bufs:[Int64:mc_sw_buf] = [:];
+    init(_ dev:MTLDevice, _ queue:MTLCommandQueue) {
+        self.dev = dev;
+        self.queue = queue;
+    }
 };
 
 // Index of next object
-var mc_next_index:Int = 4242; 
-var mc_devs:[mc_sw_dev] = [];
+var mc_next_index:Int64 = 4242; 
+var mc_devs:[Int64:mc_sw_dev] = [:];
 
-@_cdecl("mc_sw_count_devs") public func mc_sw_get_devices(shared: UnsafeMutablePointer<mc_shared>) -> RetCode {
+@_cdecl("mc_sw_count_devs") public func mc_sw_get_devices(devices: UnsafeMutablePointer<mc_devices>) -> RetCode {
     let metal_devices = MTLCopyAllDevices();
 
-    shared[0].dev_count = Int64(metal_devices.count);
+    devices[0].dev_count = Int64(metal_devices.count);
     let dev_array = UnsafeMutablePointer<mc_dev>.allocate(capacity: metal_devices.count) // Must be freed by python  
-    shared[0].devs = dev_array 
+    devices[0].devs = dev_array 
     for dev_index in 0..<metal_devices.count {
         let dev = metal_devices[dev_index]
         dev_array[dev_index].recommendedMaxWorkingSetSize = Int64(dev.recommendedMaxWorkingSetSize);
@@ -261,7 +287,180 @@ var mc_devs:[mc_sw_dev] = [];
     return Success
 }
 
-@_cdecl("mc_sw_open_dev") public func mc_sw_open_dev() -> RetCode {
-    // Allocate a HW buffer of the requested size
+@_cdecl("mc_sw_dev_open") public func mc_sw_dev_open(
+        device_index_i64:Int64, 
+        dev_handle: UnsafeMutablePointer<mc_dev_handle>) -> RetCode {
+    let device_index = Int(device_index_i64)
+    let devices = MTLCopyAllDevices()
+    guard let defaultDevice = MTLCreateSystemDefaultDevice() else {
+        return CannotCreateDevice
+    }
+    if devices.count == 0 {
+        return CannotCreateDevice
+    }
+    if device_index >= devices.count {
+        return CannotCreateDevice
+    }
+    let newDevice = device_index < 0 ? defaultDevice : devices[device_index] 
+    guard let newCommandQueue = newDevice.makeCommandQueue() else {
+        return CannotCreateCommandQueue 
+    } 
+
+    // Return device object
+    let dev_obj = mc_sw_dev(newDevice, newCommandQueue)
+    let id = mc_next_index
+    mc_next_index += 1
+    mc_devs[id] = dev_obj // Store the dev
+    dev_handle[0].id = id // Return id of dev
+    dev_handle[0].name = strdup(newDevice.name) // Python must free this later
+
     return Success
 }
+
+@_cdecl("mc_sw_dev_close") public func mc_sw_dev_close(handle: UnsafeMutablePointer<mc_dev_handle>) -> RetCode {
+    guard mc_devs.removeValue(forKey: handle[0].id) != nil else {
+        return DeviceNotFound
+    }
+    return Success
+}
+
+@_cdecl("mc_sw_kern_open") public func mc_sw_kern_open(
+        dev_handle: UnsafePointer<mc_dev_handle>, 
+        program_raw: UnsafePointer<CChar>, 
+        kern_handle: UnsafeMutablePointer<mc_kern_handle>) -> RetCode {
+    guard let sw_dev = mc_devs[dev_handle[0].id] else { return DeviceNotFound }
+
+    // Convert c strings to Swift String
+    let program = String(cString:program_raw)
+
+    let options = MTLCompileOptions();
+    options.fastMathEnabled = true
+    options.languageVersion = .version2_3
+
+    do {
+        let newLibrary = try sw_dev.dev.makeLibrary(source: program, options:options) 
+        let kern = mc_sw_kern(newLibrary)
+        let id = mc_next_index
+        mc_next_index += 1
+        sw_dev.kerns[id] = kern
+        kern_handle[0].id = id 
+    } catch {
+        compileError = error.localizedDescription
+        return FailedToCompile
+    }
+
+    return Success; 
+}
+
+@_cdecl("mc_sw_kern_close") public func mc_sw_kern_close(
+        dev_handle: UnsafePointer<mc_dev_handle>,
+        kern_handle: UnsafeMutablePointer<mc_kern_handle>) -> RetCode {
+    guard let sw_dev = mc_devs[dev_handle[0].id] else { return DeviceNotFound }
+    guard sw_dev.kerns.removeValue(forKey: kern_handle[0].id) != nil else {
+        return KernelNotFound
+    }
+    return Success
+}
+
+@_cdecl("mc_sw_fn_open") public func mc_sw_fn_open(
+        dev_handle: UnsafePointer<mc_dev_handle>, 
+        kern_handle: UnsafePointer<mc_kern_handle>,
+        func_name_raw: UnsafePointer<CChar>, 
+        fn_handle: UnsafeMutablePointer<mc_fn_handle>
+        ) -> RetCode {
+    guard let sw_dev = mc_devs[dev_handle[0].id] else { return DeviceNotFound }
+    guard let sw_kern = sw_dev.kerns[kern_handle[0].id] else { return KernelNotFound }
+
+    // Convert c string to Swift String
+    let func_name = String(cString:func_name_raw)
+
+    guard let newFunction = sw_kern.lib.makeFunction(name: func_name) else { return FunctionNotFound }
+
+    let fn = mc_sw_fn(newFunction)
+    let id = mc_next_index
+    mc_next_index += 1
+    sw_kern.fns[id] = fn
+    fn_handle[0].id = id 
+
+    return Success; 
+}
+
+@_cdecl("mc_sw_fn_close") public func mc_sw_fn_close(
+        dev_handle: UnsafePointer<mc_dev_handle>,
+        kern_handle: UnsafePointer<mc_kern_handle>,
+        fn_handle: UnsafeMutablePointer<mc_fn_handle>) -> RetCode {
+    guard let sw_dev = mc_devs[dev_handle[0].id] else { return DeviceNotFound }
+    guard let sw_kern = sw_dev.kerns[kern_handle[0].id] else { return KernelNotFound }
+    guard sw_kern.fns.removeValue(forKey: fn_handle[0].id) != nil else {
+        return FunctionNotFound
+    }
+    return Success
+}
+
+@_cdecl("mc_sw_buf_open") public func mc_sw_buf_open(
+        dev_handle: UnsafePointer<mc_dev_handle>, 
+        length:Int64,
+        buf_handle: UnsafeMutablePointer<mc_buf_handle>) -> RetCode {
+    guard let sw_dev = mc_devs[dev_handle[0].id] else { return DeviceNotFound }
+
+    guard let newBuffer = sw_dev.dev.makeBuffer(length: Int(length), options: .storageModeShared) else {
+        return CouldNotMakeBuffer
+    }
+
+    let buf = mc_sw_buf(newBuffer)
+    let id = mc_next_index
+    mc_next_index += 1
+    sw_dev.bufs[id] = buf
+    buf_handle[0].id = id
+    buf_handle[0].buf = newBuffer.contents().bindMemory(to: CChar.self, capacity: Int(length))
+    buf_handle[0].length = length
+
+    return Success; 
+}
+
+@_cdecl("mc_sw_buf_close") public func mc_sw_buf_close(
+        dev_handle: UnsafePointer<mc_dev_handle>,
+        buf_handle: UnsafeMutablePointer<mc_buf_handle>) -> RetCode {
+    guard let sw_dev = mc_devs[dev_handle[0].id] else { return DeviceNotFound }
+    guard sw_dev.bufs.removeValue(forKey: buf_handle[0].id) != nil else {
+        return BufferNotFound
+    }
+    return Success
+}
+
+@_cdecl("mc_sw_fn_run") public func mc_sw_fn_run(
+        dev_handle: UnsafePointer<mc_dev_handle>, 
+        kern_handle: UnsafePointer<mc_kern_handle>, 
+        fn_handle: UnsafePointer<mc_fn_handle>, 
+        buf_in_handle: UnsafeMutablePointer<mc_buf_handle>,
+        buf_out_handle: UnsafeMutablePointer<mc_buf_handle>,
+        kcount:Int64) -> RetCode {
+    guard let sw_dev = mc_devs[dev_handle[0].id] else { return DeviceNotFound }
+    guard let sw_kern = sw_dev.kerns[kern_handle[0].id] else { return KernelNotFound }
+    guard let sw_fn = sw_kern.fns[fn_handle[0].id] else { return FunctionNotFound }
+    guard let sw_buf_in = sw_dev.bufs[buf_in_handle[0].id] else { return BufferNotFound }
+    guard let sw_buf_out = sw_dev.bufs[buf_out_handle[0].id] else { return BufferNotFound }
+    guard let commandBuffer = sw_dev.queue.makeCommandBuffer() else { return CannotCreateCommandBuffer }
+    guard let encoder = commandBuffer.makeComputeCommandEncoder() else { return CannotCreateCommandEncoder }
+
+    do {
+        let pipelineState = try sw_dev.dev.makeComputePipelineState(function:sw_fn.fn)
+        encoder.setComputePipelineState(pipelineState);
+        encoder.setBuffer(sw_buf_in.buf, offset: 0, index: 0)
+        encoder.setBuffer(sw_buf_out.buf, offset: 0, index: 1)
+        let w = pipelineState.threadExecutionWidth
+        let h = pipelineState.maxTotalThreadsPerThreadgroup / w
+        let numThreadgroups = MTLSize(width: (Int(kcount)+(w*h-1))/(w*h), height: 1, depth: 1)
+        let threadsPerThreadgroup = MTLSize(width: w*h, height: 1, depth: 1)
+        encoder.dispatchThreadgroups(numThreadgroups, threadsPerThreadgroup: threadsPerThreadgroup)
+        encoder.endEncoding()
+        commandBuffer.commit()
+        commandBuffer.waitUntilCompleted()
+    } catch {
+        return CannotCreatePipelineState
+    }
+
+    return Success
+}
+
+
