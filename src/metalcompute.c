@@ -64,7 +64,6 @@ static PyObject *MetalComputeError;
 RetCode mc_err(RetCode ret) {
     // Map error codes to exception with string
     if (ret != Success) {
-        printf("mc_err:%lld\n", ret);
         const char* errString = "Unknown error";
 
         switch (ret) {

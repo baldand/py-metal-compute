@@ -21,53 +21,46 @@ kernel_with_error = """
 invalid_program
 """
 
+dev = mc.Device()
 
 count = 1234567
-i = array('f', range(count))
-o = array('f', [0 for i in range(count)])
+in_buf = dev.buffer(count)
+in_buf_mv = memoryview(in_buf).cast('f')
+in_buf_mv[:] = range(count)
+out_buf = dev.buffer(count)
+out_buf_mv = memoryview(out_buf).cast('f')
 
-mc.init()
-
-# Check some error handling. Cannot run before compiling
+# Compile errors are returned in exception when compiling invalid programs
 try:
-    mc.run(i, o, count)
+    fn_error = dev.kernel(kernel_with_error).function(function_name)
     assert(false) # Should not reach here
-except mc.error:
+except mc.error as err:
+    # To see error message from compiler do: print(err)
     pass # Expected exception here
 
 # When compiling must give name of needed function
 try:
-    mc.compile(kernel, "unknown")
+    fn_bad_name = dev.kernel(kernel).function("unknown")
     assert(false) # Should not reach here
 except mc.error:
     pass # Expected exception here
 
 function_name = "test"
 
-# Compile errors are returned in exception when compiling invalid programs
-try:
-    mc.compile(kernel_with_error, function_name)
-    assert(false) # Should not reach here
-except mc.error as err:
-    # To see error message from compiler do: print(err)
-    pass # Expected exception here
-
 # This should work
-mc.compile(kernel, function_name)
+fn_good = dev.kernel(kernel).function(function_name)
 
 print("Calculating sin of",count,"values")
 s1 = now()
 
 # This should work. Arrays must be 1D float at the moment
-mc.run(i, o, count)
+fn_good(in_buf, out_buf, count)
 e1 = now()
 
 s2 = now()
 oref = array('f',[math.sin(value) for value in i])
 e2 = now()
 
-print("Expected value:",oref[-1], "Received value:",o[-1])
+print("Expected value:",oref[-1], "Received value:",out_buf_mv[-1])
 print("Metal compute took:",e1-s1,"s")
 print("Reference compute took:",e2-s2,"s")
-
-mc.release()
