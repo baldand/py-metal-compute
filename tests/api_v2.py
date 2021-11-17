@@ -1,3 +1,4 @@
+from types import prepare_class
 import metalcompute as mc
 import numpy as np
 from time import time as now
@@ -5,7 +6,7 @@ from time import time as now
 dev = mc.Device(0)
 print(dev)
 
-kern = mc.Kernel(dev, """
+test = dev.kernel("""
 #include <metal_stdlib>
 using namespace metal;
 
@@ -14,17 +15,17 @@ kernel void test(const device uchar *in [[ buffer(0) ]],
                 uint id [[ thread_position_in_grid ]]) {
     out[id] = in[id] + 2;
 }
-""")
+""").function("test")
 
-test = mc.Function(kern, "test")
-
-buf_in = mc.Buffer(dev, 40000*40000)
+buf_in = dev.buffer(40000*40000)
 
 np_buf_in = np.frombuffer(buf_in, dtype=np.uint8).reshape(40000,40000)
 
 np_buf_in[:] = 42
 
-buf_out = mc.Buffer(dev, 40000*40000)
+buf_out = dev.buffer(40000*40000)
+
+del dev # Should be safe due to ref counting
 
 np_buf_out = np.frombuffer(buf_out, dtype=np.uint8).reshape(40000,40000)
 

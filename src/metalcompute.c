@@ -39,6 +39,10 @@ const RetCode FunctionNotFound = -1002;
 const RetCode CouldNotMakeBuffer = -1003;
 const RetCode BufferNotFound = -1004;
 
+// Python level errors
+const RetCode FirstArgumentNotDevice = -2000;
+const RetCode FirstArgumentNotKernel = -2001;
+
 // Buffer formats
 const long FormatUnknown = -1;
 const long FormatI8 = 0;
@@ -85,7 +89,9 @@ RetCode mc_err(RetCode ret) {
             case FunctionNotFound: errString = "Function not found"; break;
             case CouldNotMakeBuffer: errString = "Could not make buffer"; break;
             case BufferNotFound: errString = "Buffer not found"; break;
-
+            // Python level errors
+            case FirstArgumentNotDevice: errString = "First argument should be a metalcompute.Device object"; break;
+            case FirstArgumentNotKernel: errString = "First argument should be a metalcompute.Kernel object"; break;
             // C level errors below
         }
 
@@ -311,9 +317,10 @@ Device_init(Device *self, PyObject *args, PyObject *kwds)
 static void
 Device_dealloc(Device *self)
 {
-    //printf("Device dealloc called %s\n", self->handle.name);
-    free(self->dev_handle.name); // Name string allocated by Swift on open
-    mc_sw_dev_close(&(self->dev_handle));
+    if (self->dev_handle.id != 0) {
+        free(self->dev_handle.name); // Name string allocated by Swift on open
+        mc_sw_dev_close(&(self->dev_handle));
+    }
     Py_TYPE(self)->tp_free((PyObject *) self);
 }
 
@@ -322,6 +329,47 @@ Device_str(Device* self)
 {
     return PyUnicode_FromFormat("metalcompute.Device(%s)", self->dev_handle.name);
 }
+
+static PyTypeObject KernelType; // Forward reference
+static PyTypeObject BufferType; // Forward reference
+
+static PyObject *
+Device_kernel(Device* self, PyObject* args, PyObject* kwargs)
+{
+    PyObject* first_arg;
+
+    if (!PyArg_ParseTuple(args, "O", &first_arg))
+        return NULL;
+
+    PyObject *kernelArgList = Py_BuildValue("OO", self, first_arg);
+    PyObject *newKernelObj = PyObject_CallObject((PyObject *) &KernelType, kernelArgList);
+    Py_DECREF(kernelArgList);
+    return newKernelObj;
+}
+
+static PyObject *
+Device_buffer(Device* self, PyObject* args, PyObject* kwargs)
+{
+    PyObject* first_arg;
+
+    if (!PyArg_ParseTuple(args, "O", &first_arg))
+        return NULL;
+
+    PyObject *bufferArgList = Py_BuildValue("OO", self, first_arg);
+    PyObject *newBufferObj = PyObject_CallObject((PyObject *) &BufferType, bufferArgList);
+    Py_DECREF(bufferArgList);
+    return newBufferObj;
+}
+
+static PyMethodDef Device_methods[] = {
+    {"kernel", (PyCFunction) Device_kernel, METH_VARARGS,
+     "Compile a kernel for this device"
+    },
+    {"buffer", (PyCFunction) Device_buffer, METH_VARARGS,
+     "Create a buffer for this device"
+    },
+    {NULL}  /* Sentinel */
+};
 
 static PyTypeObject DeviceType = {
     PyVarObject_HEAD_INIT(NULL, 0)
@@ -334,6 +382,7 @@ static PyTypeObject DeviceType = {
     .tp_init = (initproc) Device_init,
     .tp_dealloc = (destructor) Device_dealloc,
     .tp_str = (reprfunc) Device_str,
+    .tp_methods = Device_methods,
 };
 
 static int
@@ -345,13 +394,17 @@ Kernel_init(Kernel *self, PyObject *args, PyObject *kwds)
     if (!PyArg_ParseTuple(args, "Os", &dev_obj, &program))
         return -1;
 
-    if (dev_obj->ob_type != &DeviceType)
+    if (dev_obj->ob_type != &DeviceType) {
+        mc_err(FirstArgumentNotDevice);
         return -1;
+    }
 
     self->dev_obj = (Device*)dev_obj;
 
     if (mc_err(mc_sw_kern_open(&(self->dev_obj->dev_handle), program, &(self->kern_handle))))
         return -1;
+
+    Py_INCREF(dev_obj); // Cannot close device while kernel open
 
     return 0;
 }
@@ -359,7 +412,10 @@ Kernel_init(Kernel *self, PyObject *args, PyObject *kwds)
 static void
 Kernel_dealloc(Kernel *self)
 {
-    mc_sw_kern_close(&(self->dev_obj->dev_handle), &(self->kern_handle));
+    if (self->kern_handle.id != 0) {
+        mc_sw_kern_close(&(self->dev_obj->dev_handle), &(self->kern_handle));
+        Py_DECREF(self->dev_obj);
+    }
     Py_TYPE(self)->tp_free((PyObject *) self);
 }
 
@@ -368,6 +424,29 @@ Kernel_str(Kernel* self)
 {
     return PyUnicode_FromFormat("metalcompute.Kernel");
 }
+
+static PyTypeObject FunctionType; // Forward reference
+
+static PyObject *
+Kernel_function(Kernel* self, PyObject* args, PyObject* kwargs)
+{
+    PyObject* first_arg;
+
+    if (!PyArg_ParseTuple(args, "O", &first_arg))
+        return NULL;
+
+    PyObject *functionArgList = Py_BuildValue("OO", self, first_arg);
+    PyObject *newFunctionObj = PyObject_CallObject((PyObject *) &FunctionType, functionArgList);
+    Py_DECREF(functionArgList);
+    return newFunctionObj;
+}
+
+static PyMethodDef Kernel_methods[] = {
+    {"function", (PyCFunction) Kernel_function, METH_VARARGS,
+     "Link a funtion from this kernel"
+    },
+    {NULL}  /* Sentinel */
+};
 
 static PyTypeObject KernelType = {
     PyVarObject_HEAD_INIT(NULL, 0)
@@ -380,6 +459,7 @@ static PyTypeObject KernelType = {
     .tp_init = (initproc) Kernel_init,
     .tp_dealloc = (destructor) Kernel_dealloc,
     .tp_str = (reprfunc) Kernel_str,
+    .tp_methods = Kernel_methods
 };
 
 static int
@@ -391,13 +471,17 @@ Function_init(Function *self, PyObject *args, PyObject *kwds)
     if (!PyArg_ParseTuple(args, "Os", &kern_obj, &func_name))
         return -1;
 
-    if (kern_obj->ob_type != &KernelType)
+    if (!PyObject_TypeCheck(kern_obj, &KernelType)) {
+        mc_err(FirstArgumentNotKernel);
         return -1;
+    }
 
     self->kern_obj = (Kernel*)kern_obj;
 
     if (mc_err(mc_sw_fn_open(&(self->kern_obj->dev_obj->dev_handle), &(self->kern_obj->kern_handle), func_name, &(self->fn_handle))))
         return -1;
+
+    Py_INCREF(kern_obj); // Cannot close kernel while function open
 
     return 0;
 }
@@ -405,7 +489,10 @@ Function_init(Function *self, PyObject *args, PyObject *kwds)
 static void
 Function_dealloc(Function *self)
 {
-    mc_sw_fn_close(&(self->kern_obj->dev_obj->dev_handle), &(self->kern_obj->kern_handle), &(self->fn_handle));
+    if (self->fn_handle.id != 0) {
+        mc_sw_fn_close(&(self->kern_obj->dev_obj->dev_handle), &(self->kern_obj->kern_handle), &(self->fn_handle));
+        Py_DECREF(self->kern_obj);
+    }
     Py_TYPE(self)->tp_free((PyObject *) self);
 }
 
@@ -474,8 +561,10 @@ Buffer_init(Buffer *self, PyObject *args, PyObject *kwds)
     if (!PyArg_ParseTuple(args, "OL", &dev_obj, &length))
         return -1;
 
-    if (dev_obj->ob_type != &DeviceType)
+    if (!PyObject_TypeCheck(dev_obj, &DeviceType)) {
+        mc_err(FirstArgumentNotDevice);
         return -1;
+    }
 
     self->dev_obj = (Device*)dev_obj;
 
@@ -485,6 +574,8 @@ Buffer_init(Buffer *self, PyObject *args, PyObject *kwds)
     self->length = length;
     self->exports = 0;
 
+    Py_INCREF(dev_obj); // Cannot close device while buffer open
+
     return 0;
 }
 
@@ -492,6 +583,7 @@ static void
 Buffer_dealloc(Buffer *self)
 {
     mc_sw_buf_close(&(self->dev_obj->dev_handle), &(self->buf_handle));
+    Py_DECREF(self->dev_obj);
     Py_TYPE(self)->tp_free((PyObject *) self);
 }
 
@@ -502,7 +594,6 @@ Buffer_str(Buffer* self)
 }
 
 int Buffer_getbuffer(Buffer *self, Py_buffer *view, int flags) {
-    //printf("flags: %d\n", flags);
     view->buf = self->buf_handle.buf;
     view->obj = (PyObject*)self;
     Py_INCREF(view->obj);
