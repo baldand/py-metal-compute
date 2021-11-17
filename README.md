@@ -49,6 +49,18 @@ dev = mc.Device()
 # or to pick a specific device:
 # mc.Device(device_index)
 
+program = """
+#include <metal_stdlib>
+using namespace metal;
+
+kernel void test(const device float *in [[ buffer(0) ]],
+                device float  *out [[ buffer(1) ]],
+                uint id [[ thread_position_in_grid ]]) {
+    out[id] = sin(in[id]);
+}
+"""
+function_name = "test"
+
 kernel_fn = dev.kernel(program).function(function_name)
 # Will raise exception with details if metal kernel has errors
 
