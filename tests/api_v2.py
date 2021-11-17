@@ -1,4 +1,3 @@
-from types import prepare_class
 import metalcompute as mc
 import numpy as np
 from time import time as now
@@ -6,7 +5,7 @@ from time import time as now
 dev = mc.Device(0)
 print(dev)
 
-test = dev.kernel("""
+kern = dev.kernel("""
 #include <metal_stdlib>
 using namespace metal;
 
@@ -15,22 +14,31 @@ kernel void test(const device uchar *in [[ buffer(0) ]],
                 uint id [[ thread_position_in_grid ]]) {
     out[id] = in[id] + 2;
 }
-""").function("test")
+""")
+test = kern.function("test")
 
-buf_in = dev.buffer(40000*40000)
+dim = 40000
+reps = 100
 
-np_buf_in = np.frombuffer(buf_in, dtype=np.uint8).reshape(40000,40000)
+buf_in = dev.buffer(dim*dim)
+
+np_buf_in = np.frombuffer(buf_in, dtype=np.uint8).reshape(dim,dim)
 
 np_buf_in[:] = 42
 
-buf_out = dev.buffer(40000*40000)
+buf_out = dev.buffer(dim*dim)
 
 del dev # Should be safe due to ref counting
 
-np_buf_out = np.frombuffer(buf_out, dtype=np.uint8).reshape(40000,40000)
+np_buf_out = np.frombuffer(buf_out, dtype=np.uint8).reshape(dim,dim)
 
 start = now()
-test(buf_in, buf_out, np_buf_out.size)
+# Calls to "test" will not block until the returned handles are released
+handles = [test(buf_in, buf_out, np_buf_out.size) for i in range(reps)]
+# Now that all calls are queued, release the handles to block until all completed
+del handles
 end = now()
 
-print(np_buf_out[-1,-1], end-start)
+assert(np_buf_out[-1,-1] == 44)
+
+print(f"Data transfer rate: {(dim*dim*reps*2)/(1E9*(end-start)):3.6} GB/s")

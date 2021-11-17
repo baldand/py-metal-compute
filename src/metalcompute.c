@@ -38,6 +38,7 @@ const RetCode KernelNotFound = -1001;
 const RetCode FunctionNotFound = -1002;
 const RetCode CouldNotMakeBuffer = -1003;
 const RetCode BufferNotFound = -1004;
+const RetCode RunNotFound = -1005;
 
 // Python level errors
 const RetCode FirstArgumentNotDevice = -2000;
@@ -63,7 +64,7 @@ static PyObject *MetalComputeError;
 RetCode mc_err(RetCode ret) {
     // Map error codes to exception with string
     if (ret != Success) {
-
+        printf("mc_err:%lld\n", ret);
         const char* errString = "Unknown error";
 
         switch (ret) {
@@ -89,6 +90,7 @@ RetCode mc_err(RetCode ret) {
             case FunctionNotFound: errString = "Function not found"; break;
             case CouldNotMakeBuffer: errString = "Could not make buffer"; break;
             case BufferNotFound: errString = "Buffer not found"; break;
+            case RunNotFound: errString = "Run not found"; break;
             // Python level errors
             case FirstArgumentNotDevice: errString = "First argument should be a metalcompute.Device object"; break;
             case FirstArgumentNotKernel: errString = "First argument should be a metalcompute.Kernel object"; break;
@@ -301,6 +303,13 @@ typedef struct {
     uint64_t exports;
 } Buffer;
 
+typedef struct {
+    PyObject_HEAD
+    Function* fn_obj;
+    PyObject* tuple_bufs; // Tuple of buffers used by this run
+    mc_run_handle run_handle;
+} Run;
+
 static int
 Device_init(Device *self, PyObject *args, PyObject *kwds)
 {
@@ -310,7 +319,6 @@ Device_init(Device *self, PyObject *args, PyObject *kwds)
     if (mc_err(mc_sw_dev_open(device_index, &(self->dev_handle))))
         return -1;
 
-    //printf("Device init called %s\n", self->handle.name);
     return 0;
 }
 
@@ -388,6 +396,7 @@ static PyTypeObject DeviceType = {
 static int
 Kernel_init(Kernel *self, PyObject *args, PyObject *kwds)
 {
+    // Private - can only be called via device.kernel
     PyObject* dev_obj;
     const char *program;
 
@@ -443,7 +452,7 @@ Kernel_function(Kernel* self, PyObject* args, PyObject* kwargs)
 
 static PyMethodDef Kernel_methods[] = {
     {"function", (PyCFunction) Kernel_function, METH_VARARGS,
-     "Link a funtion from this kernel"
+     "Link a function from this kernel"
     },
     {NULL}  /* Sentinel */
 };
@@ -465,6 +474,7 @@ static PyTypeObject KernelType = {
 static int
 Function_init(Function *self, PyObject *args, PyObject *kwds)
 {
+    // Private - can only be called via kernel.function
     PyObject* kern_obj;
     const char *func_name;
 
@@ -502,40 +512,14 @@ Function_str(Function* self)
     return PyUnicode_FromFormat("metalcompute.Function");
 }
 
-static PyTypeObject BufferType; // Forward reference
+static PyTypeObject RunType; // Forward reference
 
 static PyObject *
 Function_call(Function* self, PyObject *args, PyObject *kwargs) {
-    Buffer* buf_in;
-    Buffer* buf_out;
-    int64_t kcount;
-
-    if (!PyArg_ParseTuple(args, "OOL", &buf_in, &buf_out, &kcount)) {
-        mc_err(NotReadyToRun);
-        return NULL;
-    }
-
-    if (((PyObject*)buf_in)->ob_type != &BufferType) {
-        mc_err(NotReadyToRun);
-        return NULL;
-    }
-
-    if (((PyObject*)buf_out)->ob_type != &BufferType) {
-        mc_err(NotReadyToRun);
-        return NULL;
-    }
-
-    if (mc_err(mc_sw_fn_run(
-        &(self->kern_obj->dev_obj->dev_handle),
-        &(self->kern_obj->kern_handle),
-        &(self->fn_handle),
-        &(buf_in->buf_handle),
-        &(buf_out->buf_handle), 
-        kcount))) {
-        return NULL;
-    }
-
-    Py_RETURN_NONE;
+    PyObject *runArgList = Py_BuildValue("OO", self, args);
+    PyObject *newRunObj = PyObject_CallObject((PyObject *) &RunType, runArgList);
+    Py_DECREF(runArgList);
+    return newRunObj;
 }
 
 static PyTypeObject FunctionType = {
@@ -555,7 +539,8 @@ static PyTypeObject FunctionType = {
 static int
 Buffer_init(Buffer *self, PyObject *args, PyObject *kwds)
 {
-    PyObject* dev_obj;
+    // Private - can only be called via device.buffer
+    Device* dev_obj;
     int64_t length;
 
     if (!PyArg_ParseTuple(args, "OL", &dev_obj, &length))
@@ -566,14 +551,13 @@ Buffer_init(Buffer *self, PyObject *args, PyObject *kwds)
         return -1;
     }
 
-    self->dev_obj = (Device*)dev_obj;
-
-    if (mc_err(mc_sw_buf_open(&(self->dev_obj->dev_handle), length, &(self->buf_handle))))
+    if (mc_err(mc_sw_buf_open(&(dev_obj->dev_handle), length, &(self->buf_handle)))) {
         return -1;
+    }
 
     self->length = length;
     self->exports = 0;
-
+    self->dev_obj = (Device*)dev_obj;
     Py_INCREF(dev_obj); // Cannot close device while buffer open
 
     return 0;
@@ -581,9 +565,11 @@ Buffer_init(Buffer *self, PyObject *args, PyObject *kwds)
 
 static void
 Buffer_dealloc(Buffer *self)
-{
-    mc_sw_buf_close(&(self->dev_obj->dev_handle), &(self->buf_handle));
-    Py_DECREF(self->dev_obj);
+{   
+    if (self->buf_handle.id != 0) {
+        mc_sw_buf_close(&(self->dev_obj->dev_handle), &(self->buf_handle));
+        Py_DECREF(self->dev_obj);
+    }
     Py_TYPE(self)->tp_free((PyObject *) self);
 }
 
@@ -631,6 +617,82 @@ static PyTypeObject BufferType = {
     .tp_str = (reprfunc) Buffer_str,
     .tp_as_buffer = &BufferProcs,
 };
+
+static int
+Run_init(Run *self, PyObject *args, PyObject *kwds)
+{
+    // Private - can only be called via function.run
+    Function* fn_obj;
+    PyObject* arg_tuple;
+
+    if (!PyArg_ParseTuple(args, "OO", &fn_obj, &arg_tuple)) {
+        return -1;
+    }
+
+    Buffer* buf_in;
+    Buffer* buf_out;
+    int64_t kcount;
+
+    if (!PyArg_ParseTuple(arg_tuple, "OOL", &buf_in, &buf_out, &kcount)) {
+        return -1;
+    }
+
+    if (((PyObject*)buf_in)->ob_type != &BufferType) {
+        mc_err(NotReadyToRun);
+        return -1;
+    }
+
+    if (((PyObject*)buf_out)->ob_type != &BufferType) {
+        mc_err(NotReadyToRun);
+        return -1;
+    }
+
+    if (mc_err(mc_sw_run_open(
+        &(fn_obj->kern_obj->dev_obj->dev_handle),
+        &(fn_obj->kern_obj->kern_handle),
+        &(fn_obj->fn_handle),
+        &(buf_in->buf_handle),
+        &(buf_out->buf_handle), 
+        kcount,
+        &(self->run_handle)))) {
+        return -1;
+    }
+
+    self->fn_obj = fn_obj;
+    Py_INCREF(fn_obj);
+
+    return 0;
+}
+
+static void
+Run_dealloc(Run *self)
+{
+    if (self->run_handle.id != 0) {
+        mc_sw_run_close(&(self->run_handle));
+        Py_DECREF(self->fn_obj);
+    }
+    Py_TYPE(self)->tp_free((PyObject *) self);
+}
+
+static PyObject *
+Run_str(Run* self)
+{
+    return PyUnicode_FromFormat("metalcompute.Run");
+}
+
+static PyTypeObject RunType = {
+    PyVarObject_HEAD_INIT(NULL, 0)
+    .tp_name = "metalcompute.Run",
+    .tp_doc = "A Metal compute kernel function run",
+    .tp_basicsize = sizeof(Run),
+    .tp_itemsize = 0,
+    .tp_flags = Py_TPFLAGS_DEFAULT,
+    .tp_new = PyType_GenericNew,
+    .tp_init = (initproc) Run_init,
+    .tp_dealloc = (destructor) Run_dealloc,
+    .tp_str = (reprfunc) Run_str,
+};
+
 
 static PyMethodDef MetalComputeMethods[] = {
     // v0.1 functions - simple/deprecated
@@ -694,12 +756,14 @@ PyInit_metalcompute(void)
     if (PyType_Ready(&BufferType) < 0)
         return NULL;
 
+    if (PyType_Ready(&RunType) < 0)
+        return NULL;
+
     PyObject *m;
 
     m = PyModule_Create(&metalcomputemodule);
     if (m == NULL)
         return NULL;
-
 
     MetalComputeError = PyErr_NewException("metalcompute.error", NULL, NULL);
     Py_XINCREF(MetalComputeError);
@@ -716,36 +780,6 @@ PyInit_metalcompute(void)
     if (PyModule_AddObject(m, "Device", (PyObject *) &DeviceType) < 0) {
         Py_XDECREF(MetalComputeError);
         Py_DECREF(&DeviceType);
-        Py_DECREF(m);
-        return NULL;
-    }
-
-    Py_INCREF(&KernelType);
-    if (PyModule_AddObject(m, "Kernel", (PyObject *) &KernelType) < 0) {
-        Py_XDECREF(MetalComputeError);
-        Py_DECREF(&DeviceType);
-        Py_DECREF(&KernelType);
-        Py_DECREF(m);
-        return NULL;
-    }
-
-    Py_INCREF(&FunctionType);
-    if (PyModule_AddObject(m, "Function", (PyObject *) &FunctionType) < 0) {
-        Py_XDECREF(MetalComputeError);
-        Py_DECREF(&DeviceType);
-        Py_DECREF(&KernelType);
-        Py_DECREF(&FunctionType);
-        Py_DECREF(m);
-        return NULL;
-    }
-
-    Py_INCREF(&BufferType);
-    if (PyModule_AddObject(m, "Buffer", (PyObject *) &BufferType) < 0) {
-        Py_XDECREF(MetalComputeError);
-        Py_DECREF(&DeviceType);
-        Py_DECREF(&KernelType);
-        Py_DECREF(&FunctionType);
-        Py_DECREF(&BufferType);
         Py_DECREF(m);
         return NULL;
     }

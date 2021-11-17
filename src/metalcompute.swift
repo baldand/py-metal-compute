@@ -34,6 +34,7 @@ let KernelNotFound:RetCode = -1001
 let FunctionNotFound:RetCode = -1002
 let CouldNotMakeBuffer:RetCode = -1003
 let BufferNotFound:RetCode = -1004
+let RunNotFound:RetCode = -1005
 
 // Buffer formats
 let FormatUnknown = -1
@@ -234,53 +235,65 @@ func get_stride(_ format: Int) -> Int {
 // - Callbacks when kernels are completed and data is available
 
 class mc_sw_buf {
-    let buf:MTLBuffer;
+    let buf:MTLBuffer
     init(_ buf:MTLBuffer) {
-        self.buf = buf;
+        self.buf = buf
     }
 }
 
 class mc_sw_fn {
-    let fn:MTLFunction;
+    let fn:MTLFunction
     init(_ fn:MTLFunction) {
-        self.fn = fn;
+        self.fn = fn
     }
 }
 
 class mc_sw_kern {
-    let lib:MTLLibrary;
+    let lib:MTLLibrary
     var fns:[Int64:mc_sw_fn] = [:]
     init(_ lib:MTLLibrary) {
-        self.lib = lib;
+        self.lib = lib
     }
 }
 
 class mc_sw_dev {
-    let dev:MTLDevice;
-    let queue:MTLCommandQueue;
-    var kerns:[Int64:mc_sw_kern] = [:];
-    var bufs:[Int64:mc_sw_buf] = [:];
+    let dev:MTLDevice
+    let queue:MTLCommandQueue
+    var kerns:[Int64:mc_sw_kern] = [:]
+    var bufs:[Int64:mc_sw_buf] = [:]
     init(_ dev:MTLDevice, _ queue:MTLCommandQueue) {
-        self.dev = dev;
-        self.queue = queue;
+        self.dev = dev
+        self.queue = queue
     }
-};
+}
+
+class mc_sw_cb {
+    let dev_id:Int64
+    let cb:MTLCommandBuffer
+    var running = true
+    var released = false
+    init(_ dev_id:Int64, _ cb:MTLCommandBuffer) {
+        self.dev_id = dev_id
+        self.cb = cb
+    }
+}
 
 // Index of next object
-var mc_next_index:Int64 = 4242; 
-var mc_devs:[Int64:mc_sw_dev] = [:];
+var mc_next_index:Int64 = 4242 
+var mc_devs:[Int64:mc_sw_dev] = [:]
+var mc_cbs:[Int64:mc_sw_cb] = [:]
 
 @_cdecl("mc_sw_count_devs") public func mc_sw_get_devices(devices: UnsafeMutablePointer<mc_devices>) -> RetCode {
-    let metal_devices = MTLCopyAllDevices();
+    let metal_devices = MTLCopyAllDevices()
 
-    devices[0].dev_count = Int64(metal_devices.count);
+    devices[0].dev_count = Int64(metal_devices.count)
     let dev_array = UnsafeMutablePointer<mc_dev>.allocate(capacity: metal_devices.count) // Must be freed by python  
     devices[0].devs = dev_array 
     for dev_index in 0..<metal_devices.count {
         let dev = metal_devices[dev_index]
-        dev_array[dev_index].recommendedMaxWorkingSetSize = Int64(dev.recommendedMaxWorkingSetSize);
-        dev_array[dev_index].maxTransferRate = Int64(dev.maxTransferRate);
-        dev_array[dev_index].hasUnifiedMemory = Bool(dev.hasUnifiedMemory);
+        dev_array[dev_index].recommendedMaxWorkingSetSize = Int64(dev.recommendedMaxWorkingSetSize)
+        dev_array[dev_index].maxTransferRate = Int64(dev.maxTransferRate)
+        dev_array[dev_index].hasUnifiedMemory = Bool(dev.hasUnifiedMemory)
         dev_array[dev_index].name = strdup(dev.name) // Copy - must be released by python side
     }
 
@@ -402,7 +415,6 @@ var mc_devs:[Int64:mc_sw_dev] = [:];
         length:Int64,
         buf_handle: UnsafeMutablePointer<mc_buf_handle>) -> RetCode {
     guard let sw_dev = mc_devs[dev_handle[0].id] else { return DeviceNotFound }
-
     guard let newBuffer = sw_dev.dev.makeBuffer(length: Int(length), options: .storageModeShared) else {
         return CouldNotMakeBuffer
     }
@@ -428,13 +440,14 @@ var mc_devs:[Int64:mc_sw_dev] = [:];
     return Success
 }
 
-@_cdecl("mc_sw_fn_run") public func mc_sw_fn_run(
+@_cdecl("mc_sw_run_open") public func mc_sw_run_open(
         dev_handle: UnsafePointer<mc_dev_handle>, 
         kern_handle: UnsafePointer<mc_kern_handle>, 
         fn_handle: UnsafePointer<mc_fn_handle>, 
         buf_in_handle: UnsafeMutablePointer<mc_buf_handle>,
         buf_out_handle: UnsafeMutablePointer<mc_buf_handle>,
-        kcount:Int64) -> RetCode {
+        kcount:Int64,
+        run_handle: UnsafeMutablePointer<mc_run_handle>) -> RetCode {
     guard let sw_dev = mc_devs[dev_handle[0].id] else { return DeviceNotFound }
     guard let sw_kern = sw_dev.kerns[kern_handle[0].id] else { return KernelNotFound }
     guard let sw_fn = sw_kern.fns[fn_handle[0].id] else { return FunctionNotFound }
@@ -454,12 +467,45 @@ var mc_devs:[Int64:mc_sw_dev] = [:];
         let threadsPerThreadgroup = MTLSize(width: w*h, height: 1, depth: 1)
         encoder.dispatchThreadgroups(numThreadgroups, threadsPerThreadgroup: threadsPerThreadgroup)
         encoder.endEncoding()
+
+        let run = mc_sw_cb(dev_handle[0].id, commandBuffer)
+        let id = mc_next_index
+        mc_next_index += 1
+        mc_cbs[id] = run
+        run_handle[0].id = id
+
+        // Completion handler - will run later
+        commandBuffer.addCompletedHandler { cb in
+            for (cb_id, sw_cb) in mc_cbs {
+                if sw_cb.cb === cb {
+                    sw_cb.running = false
+                    // Could call back to python here...
+                    if sw_cb.released {
+                        mc_cbs.removeValue(forKey:cb_id)
+                    }
+                    return
+                }
+            }
+        }
+
         commandBuffer.commit()
-        commandBuffer.waitUntilCompleted()
+
     } catch {
         return CannotCreatePipelineState
     }
 
+    return Success
+}
+
+@_cdecl("mc_sw_run_close") public func mc_sw_run_close(
+        run_handle: UnsafePointer<mc_run_handle>) -> RetCode {
+    guard let sw_run = mc_cbs[run_handle[0].id] else {
+        return RunNotFound
+    }
+    if sw_run.running {
+        // Block until completion
+        sw_run.cb.waitUntilCompleted()
+    }
     return Success
 }
 
