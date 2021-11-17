@@ -44,21 +44,35 @@ import metalcompute as mc
 devices = mc.get_devices()
 # Get list of available Metal devices
 
-mc.init() 
+dev = mc.Device() 
 # Call before use. Will open default Metal device
 # or to pick a specific device:
-# mc.init(device_index)
+# mc.Device(device_index)
 
-mc.compile(program, function_name)
+kernel_fn = dev.kernel(program).function(function_name)
 # Will raise exception with details if metal kernel has errors
 
-mc.run(input_f32_or_u8_array, output_f32_or_u8_array, kernel_call_count)
+in_buffer = dev.buffer(in_size)
+out_buffer = dev.buffer(out_size)
+# Allocate metal buffers for input and output (must be compatible with kernel)
+# Buffer objects support python buffer protocol
+# Can be modified or read using e.g. memoryview, numpy.frombuffer
+
+kernel_fn(in_buffer, out_buffer, kernel_call_count)
 # Run the kernel once with supplied input data, 
 # filling supplied output data
 # Specify number of kernel calls
+# Will block until data available
 
-mc.release()
-# Call after use
+handle = kernel_fn(in_buffer, out_buffer, kernel_call_count)
+# Run the kernel once with supplied input data, 
+# filling supplied output data
+# Specify number of kernel calls
+# Will return immediately, before kernel runs, 
+# allowing additional kernels to be queued
+
+del handle
+# Block until previously queued kernel has completed
 
 ```
 
@@ -76,9 +90,9 @@ Estimated GPU TFLOPS: 2.55613
 ### Render a 3D image with raymarching
 
 ```
-# Usage: metalcompute-raymarch [<width> <height> [<output image file: PNG, JPG>]]
+# Usage: metalcompute-raymarch [-width <width>] [-height <height>] [-outname <output image file: PNG, JPG>]
 
-> metalcompute-raymarch.py 1024 1024 raymarch.jpg
+> metalcompute-raymarch.py -width 1024 -height 1024 -outname raymarch.jpg
 Render took 0.0119569s
 ```
 
@@ -87,7 +101,7 @@ Render took 0.0119569s
 ### Mandelbrot set
 
 ```
-# Usage: metalcompute-mandelbrot [<width> <height> [<output image file: PNG, JPG>]]
+# Usage: metalcompute-mandelbrot [-width <width>] [-height <height>] [-outname <output image file: PNG, JPG>]
 
 > metalcompute-mandelbrot
 Rendering mandelbrot set using Metal compute, res:4096x4096, iters:8192
@@ -100,4 +114,4 @@ Image encoding took 1.35182s
 
 ## Status
 
-This is an early preview version. 
+This is a preview version. 
