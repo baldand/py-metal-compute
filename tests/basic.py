@@ -9,11 +9,12 @@ kernel = """
 using namespace metal;
 
 kernel void test(const device float *in [[ buffer(0) ]],
-                device float  *out [[ buffer(1) ]],
+                const device float* in2 [[ buffer(1) ]],
+                device float  *out [[ buffer(2) ]],
                 uint id [[ thread_position_in_grid ]]) {
-    float r = 0.0;
-    float ii = in[id];
-    out[id] = sin(ii);
+    float value = in[id];
+    float fixed = in2[0];
+    out[id] = sin(value) + fixed;
 }
 """
 
@@ -25,6 +26,7 @@ dev = mc.Device()
 
 count = 1234567
 in_buf = array('f',range(count)) # Can use as-is for input
+constant = array('f',[1.0]) # Can use as-is for input
 out_buf = dev.buffer(count*4)
 out_buf_mv = memoryview(out_buf).cast('f')
 
@@ -52,11 +54,11 @@ print("Calculating sin of",count,"values")
 s1 = now()
 
 # This should work. Arrays must be 1D float at the moment
-fn_good(count, in_buf, out_buf)
+fn_good(count, in_buf, constant, out_buf)
 e1 = now()
 
 s2 = now()
-oref = array('f',[math.sin(value) for value in in_buf])
+oref = array('f',[math.sin(value)+1.0 for value in in_buf])
 e2 = now()
 
 print("Expected value:",oref[-1], "Received value:",out_buf_mv[-1])
