@@ -1,7 +1,6 @@
 #!python3
 
 import sys
-import argparse
 
 import metalcompute as mc
 
@@ -17,16 +16,15 @@ kernel void pipe(const device uchar *in [[ buffer(0) ]],
 
 kernel = kernel_start + kernel_body + ";}\n"
 
-mc.init()
-mc.compile(kernel,"pipe")
+dev = mc.Device()
+pipe_fn = dev.kernel(kernel).function("pipe")
 
 while 1:
     in_data = sys.stdin.buffer.read()
     if len(in_data) > 0:
-        out_data = bytearray(in_data)
-        mc.run(in_data, out_data, len(in_data))
-        sys.stdout.buffer.write(out_data)
+        out_buf = dev.buffer(len(in_data))
+        pipe_fn(len(in_data), in_data, out_buf)
+        sys.stdout.buffer.write(out_buf)
     else:
         break
 
-mc.release()

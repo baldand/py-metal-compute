@@ -9,11 +9,12 @@ kernel = """
 using namespace metal;
 
 kernel void test(const device float *in [[ buffer(0) ]],
-                device float  *out [[ buffer(1) ]],
+                const device float* in2 [[ buffer(1) ]],
+                device float  *out [[ buffer(2) ]],
                 uint id [[ thread_position_in_grid ]]) {
-    float r = 0.0;
-    float ii = in[id];
-    out[id] = sin(ii);
+    float value = in[id];
+    float fixed = in2[0];
+    out[id] = sin(value) + fixed;
 }
 """
 
@@ -21,53 +22,45 @@ kernel_with_error = """
 invalid_program
 """
 
+dev = mc.Device()
 
 count = 1234567
-i = array('f', range(count))
-o = array('f', [0 for i in range(count)])
+in_buf = array('f',range(count)) # Can use as-is for input
+constant = array('f',[1.0]) # Can use as-is for input
+out_buf = dev.buffer(count*4)
+out_buf_mv = memoryview(out_buf).cast('f')
 
-mc.init()
-
-# Check some error handling. Cannot run before compiling
+# Compile errors are returned in exception when compiling invalid programs
 try:
-    mc.run(i, o, count)
+    fn_error = dev.kernel(kernel_with_error).function(function_name)
     assert(false) # Should not reach here
-except mc.error:
+except mc.error as err:
+    # To see error message from compiler do: print(err)
     pass # Expected exception here
 
 # When compiling must give name of needed function
 try:
-    mc.compile(kernel, "unknown")
+    fn_bad_name = dev.kernel(kernel).function("unknown")
     assert(false) # Should not reach here
 except mc.error:
     pass # Expected exception here
 
 function_name = "test"
 
-# Compile errors are returned in exception when compiling invalid programs
-try:
-    mc.compile(kernel_with_error, function_name)
-    assert(false) # Should not reach here
-except mc.error as err:
-    # To see error message from compiler do: print(err)
-    pass # Expected exception here
-
 # This should work
-mc.compile(kernel, function_name)
+fn_good = dev.kernel(kernel).function(function_name)
 
 print("Calculating sin of",count,"values")
 s1 = now()
 
 # This should work. Arrays must be 1D float at the moment
-mc.run(i, o, count)
+fn_good(count, in_buf, constant, out_buf)
 e1 = now()
 
 s2 = now()
-oref = array('f',[math.sin(value) for value in i])
+oref = array('f',[math.sin(value)+1.0 for value in in_buf])
 e2 = now()
 
-print("Expected value:",oref[-1], "Received value:",o[-1])
+print("Expected value:",oref[-1], "Received value:",out_buf_mv[-1])
 print("Metal compute took:",e1-s1,"s")
 print("Reference compute took:",e2-s2,"s")
-
-mc.release()

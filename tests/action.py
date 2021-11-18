@@ -52,3 +52,12 @@ except mc.error:
 print("Testing mc.release callable")
 mc.release() # Should not fail
 print("OK")
+
+print("Testing mc.Device")
+try:
+    dev = mc.Device()
+    # Unfortunately, if there is no metal device we cannot exercise more of the object API
+    dev.kernel("test")
+    dev.buffer(0)
+except mc.error:
+    print("OK")

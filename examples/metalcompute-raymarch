@@ -3,6 +3,7 @@
 import sys, math
 from time import time as now
 from array import array
+import argparse
 
 try:
     from PIL.Image import frombuffer
@@ -12,12 +13,12 @@ except:
 
 import metalcompute as mc
 
-width,height = 4096, 4096
-if len(sys.argv) > 2:
-    width,height = int(sys.argv[1]), int(sys.argv[2])
-outname = "raymarch.jpg"
-if len(sys.argv) > 3:
-    outname = sys.argv[3]
+parser = argparse.ArgumentParser()
+parser.add_argument("-width",help="specify width of image",type=int,default=4096)
+parser.add_argument("-height",help="specify width of image",type=int,default=4096)
+parser.add_argument("-outname",help="output image file name",type=str,default="raymarch.jpg")
+parser.add_argument("-dev",help="metal device index",type=int,default=-1)
+args = parser.parse_args()
 
 kernel_start = """
 #include <metal_stdlib>
@@ -69,29 +70,28 @@ camera = [1.0,1.0,-2.0]
 target = [0.0,0.9,0.0]
 uniforms = array('f',
     [
-        width,
-        height,
+        args.width,
+        args.height,
         camera[0],camera[1],camera[2], 
         target[0],target[1],target[2], 
     ])
 
-image = bytearray(height*width*4)
 
-mc.init()
+dev = mc.Device(args.dev)
+print(f"Device:{dev}")
+image = dev.buffer(args.height * args.width * 4)
 
 raymarch_steps = 300
 kernel = kernel_start + kernel_step * raymarch_steps + kernel_end
-mc.compile(kernel, "test")
+render_fn = dev.kernel(kernel).function("test")
 
 start = now()
-mc.run(uniforms, image, width*height)
+render_fn(args.width * args.height, uniforms, image)
 end = now()
-
-mc.release()
 
 print(f"Render took {end-start:1.6}s")
 
-image_buf = frombuffer("RGBA",(width,height),data=image)
-if outname.lower().endswith("jpg"):
+image_buf = frombuffer("RGBA",(args.width, args.height),data=image)
+if args.outname.lower().endswith("jpg"):
     image_buf = image_buf.convert('RGB')
-image_buf.save(outname)
+image_buf.save(args.outname)

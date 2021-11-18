@@ -19,16 +19,54 @@ char* mc_sw_get_compile_error(); // Must free after calling
 
 // v0.2 API
 
-typedef struct _mc_dev {
+typedef struct {
     char* name; 
     int64_t recommendedMaxWorkingSetSize;
     bool hasUnifiedMemory;
     int64_t maxTransferRate;
 } mc_dev;
 
-typedef struct _mc_shared {
+typedef struct {
     int64_t dev_count;
     mc_dev* devs;
-} mc_shared;
+} mc_devices;
 
-RetCode mc_sw_count_devs(mc_shared* shared);
+RetCode mc_sw_count_devs(mc_devices* devices);
+
+typedef struct {
+    int64_t id;
+    char* name;
+} mc_dev_handle;
+
+typedef struct {
+    int64_t id;
+} mc_kern_handle;
+
+typedef struct {
+    int64_t id;
+} mc_fn_handle;
+
+typedef struct {
+    int64_t id;
+    char* buf;
+    int64_t length;
+} mc_buf_handle;
+
+typedef struct {
+    int64_t id;
+    int64_t kcount;
+    int64_t buf_count;
+    mc_buf_handle** bufs;
+} mc_run_handle;
+
+RetCode mc_sw_dev_open(uint64_t device_index, mc_dev_handle* dev_handle);
+RetCode mc_sw_dev_close(mc_dev_handle* dev_handle);
+RetCode mc_sw_kern_open(const mc_dev_handle* dev_handle, const char* program, mc_kern_handle* kern_handle);
+RetCode mc_sw_kern_close(const mc_dev_handle* dev_handle, mc_kern_handle* kern_handle);
+RetCode mc_sw_fn_open(const mc_dev_handle* dev_handle, const mc_kern_handle* kern_handle, const char* func_name, mc_fn_handle* fn_handle);
+RetCode mc_sw_fn_close(const mc_dev_handle* dev_handle, const mc_kern_handle* kern_handle, mc_fn_handle* fn_handle);
+RetCode mc_sw_buf_open(const mc_dev_handle* dev_handle, uint64_t length, char* src, mc_buf_handle* buf_handle);
+RetCode mc_sw_buf_close(const mc_dev_handle* dev_handle, mc_buf_handle* buf_handle);
+RetCode mc_sw_run_open(const mc_dev_handle* dev_handle, const mc_kern_handle* kern_handle,
+                     const mc_fn_handle* fn_handle, mc_run_handle* run_handle);
+RetCode mc_sw_run_close(const mc_run_handle* run_handle);

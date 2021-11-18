@@ -3,6 +3,7 @@
 import sys
 from time import time as now
 from array import array
+import argparse
 
 try:
     import PIL
@@ -13,15 +14,17 @@ except:
 
 import metalcompute as mc
 
-width,height = 4096, 4096
-if len(sys.argv) > 2:
-    width,height = int(sys.argv[1]), int(sys.argv[2])
-outname = "mandelbrot.jpg"
-if len(sys.argv) > 3:
-    outname = sys.argv[3]
+parser = argparse.ArgumentParser()
+parser.add_argument("-width",help="specify width of image",type=int,default=4096)
+parser.add_argument("-height",help="specify width of image",type=int,default=4096)
+parser.add_argument("-outname",help="output image file name",type=str,default="mandelbrot.jpg")
+parser.add_argument("-iters",help="iterations",type=int,default=4096)
+parser.add_argument("-dev",help="metal device index",type=int,default=-1)
+args = parser.parse_args()
 
-outer_iter = 512
 inner_iter = 16
+outer_iter = args.iters//inner_iter
+iterations = inner_iter * outer_iter
 
 start = """
 #include <metal_stdlib>
@@ -38,7 +41,7 @@ kernel void mandelbrot(const device float *uniform [[ buffer(0) ]],
     float done = 0.0, steps = 1.0, az = 0.0;
 """
 
-loop_start = f"float maxiter = {inner_iter*outer_iter};for (int iter = {outer_iter};iter>0;iter--){{"
+loop_start = f"float maxiter = {iterations};for (int iter = {outer_iter};iter>0;iter--){{"
 
 step = """\
     z = float2((z.x * z.x) - (z.y * z.y) + c.x, (2.0 * z.x * z.y) + c.y);
@@ -62,28 +65,28 @@ end = """}
     out[id] = uchar4(uchar3(col*255.),255);
 }
 """
-print(f"Rendering mandelbrot set using Metal compute, res:{width}x{height}, iters:{outer_iter * inner_iter}")
+dev = mc.Device(args.dev)
+print(f"Rendering mandelbrot set using Metal compute")
+print(f"Res: {args.width} x {args.height}, iterations: {iterations}")
+print(f"Device: {dev}")
 
-mc.init()
-
-mc.compile(start + loop_start + step * inner_iter + end, "mandelbrot")
-image = bytearray(height*width*4)
+render_fn = dev.kernel(start + loop_start + step * inner_iter + end).function("mandelbrot")
+image = dev.buffer(args.height * args.width * 4)
+args_buf = array('f',[args.width, args.height])
 
 start_render = now()
-mc.run(array('f',[width,height]), image, width*height)
+render_fn(args.width * args.height, args_buf, image)
 end_render = now()
-
-mc.release()
 
 print(f"Render took {end_render - start_render:3.6}s")
 
-print(f"Writing image to {outname}")
+print(f"Writing image to {args.outname}")
 start_write = now()
 
-image_buf = frombuffer("RGBA",(width,height),data=image)
-if outname.lower().endswith("jpg"):
+image_buf = frombuffer("RGBA",(args.width, args.height),data=image)
+if args.outname.lower().endswith("jpg"):
     image_buf = image_buf.convert('RGB')
-image_buf.save(outname)
+image_buf.save(args.outname)
 
 end_write = now()
 
