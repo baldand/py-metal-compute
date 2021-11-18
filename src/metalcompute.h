@@ -65,7 +65,7 @@ RetCode mc_sw_kern_open(const mc_dev_handle* dev_handle, const char* program, mc
 RetCode mc_sw_kern_close(const mc_dev_handle* dev_handle, mc_kern_handle* kern_handle);
 RetCode mc_sw_fn_open(const mc_dev_handle* dev_handle, const mc_kern_handle* kern_handle, const char* func_name, mc_fn_handle* fn_handle);
 RetCode mc_sw_fn_close(const mc_dev_handle* dev_handle, const mc_kern_handle* kern_handle, mc_fn_handle* fn_handle);
-RetCode mc_sw_buf_open(const mc_dev_handle* dev_handle, uint64_t length, mc_buf_handle* buf_handle);
+RetCode mc_sw_buf_open(const mc_dev_handle* dev_handle, uint64_t length, char* src, mc_buf_handle* buf_handle);
 RetCode mc_sw_buf_close(const mc_dev_handle* dev_handle, mc_buf_handle* buf_handle);
 RetCode mc_sw_run_open(const mc_dev_handle* dev_handle, const mc_kern_handle* kern_handle,
                      const mc_fn_handle* fn_handle, mc_run_handle* run_handle);

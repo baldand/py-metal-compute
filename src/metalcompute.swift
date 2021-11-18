@@ -413,10 +413,20 @@ var mc_cbs:[Int64:mc_sw_cb] = [:]
 @_cdecl("mc_sw_buf_open") public func mc_sw_buf_open(
         dev_handle: UnsafePointer<mc_dev_handle>, 
         length:Int64,
+        src_opt: UnsafeRawPointer?,
         buf_handle: UnsafeMutablePointer<mc_buf_handle>) -> RetCode {
     guard let sw_dev = mc_devs[dev_handle[0].id] else { return DeviceNotFound }
-    guard let newBuffer = sw_dev.dev.makeBuffer(length: Int(length), options: .storageModeShared) else {
-        return CouldNotMakeBuffer
+    var newBuffer:MTLBuffer
+    if let src = src_opt {
+        guard let copyBuffer = sw_dev.dev.makeBuffer(bytes: src, length: Int(length), options: .storageModeShared) else {
+            return CouldNotMakeBuffer
+        }
+        newBuffer = copyBuffer 
+    } else {
+        guard let zeroBuffer = sw_dev.dev.makeBuffer(length: Int(length), options: .storageModeShared) else {
+            return CouldNotMakeBuffer
+        }
+        newBuffer = zeroBuffer 
     }
 
     let buf = mc_sw_buf(newBuffer)

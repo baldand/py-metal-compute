@@ -72,10 +72,7 @@ print(f"Device: {dev}")
 
 render_fn = dev.kernel(start + loop_start + step * inner_iter + end).function("mandelbrot")
 image = dev.buffer(args.height * args.width * 4)
-args_buf = dev.buffer(2*4)
-args_buf_mv = memoryview(args_buf).cast('f')
-args_buf_mv[0] = args.width
-args_buf_mv[1] = args.width
+args_buf = array('f',[args.width, args.height])
 
 start_render = now()
 render_fn(args.width * args.height, args_buf, image)

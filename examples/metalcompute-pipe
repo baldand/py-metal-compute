@@ -22,12 +22,8 @@ pipe_fn = dev.kernel(kernel).function("pipe")
 while 1:
     in_data = sys.stdin.buffer.read()
     if len(in_data) > 0:
-        in_buf = dev.buffer(len(in_data))
-        in_buf_mv = memoryview(in_buf)
-        in_buf_mv[:] = in_data
         out_buf = dev.buffer(len(in_data))
-        pipe_fn(len(in_data), in_buf, out_buf)
-        out_buf_mv = memoryview(out_buf)
+        pipe_fn(len(in_data), in_data, out_buf)
         sys.stdout.buffer.write(out_buf)
     else:
         break

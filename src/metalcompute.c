@@ -542,9 +542,12 @@ Buffer_init(Buffer *self, PyObject *args, PyObject *kwds)
 {
     // Private - can only be called via device.buffer
     Device* dev_obj;
+    PyObject* length_or_buffer;
+    Py_buffer buffer;
     int64_t length;
+    char* src;
 
-    if (!PyArg_ParseTuple(args, "OL", &dev_obj, &length))
+    if (!PyArg_ParseTuple(args, "OO", &dev_obj, &length_or_buffer))
         return -1;
 
     if (!PyObject_TypeCheck(dev_obj, &DeviceType)) {
@@ -552,8 +555,26 @@ Buffer_init(Buffer *self, PyObject *args, PyObject *kwds)
         return -1;
     }
 
-    if (mc_err(mc_sw_buf_open(&(dev_obj->dev_handle), length, &(self->buf_handle)))) {
+    // Is the argument an integer length?
+    if (PyNumber_Check(length_or_buffer) == 1) {
+        // Yes
+        length = PyLong_AsLongLong(PyNumber_Long(length_or_buffer));
+        src = NULL;
+    } else if (!PyObject_GetBuffer(length_or_buffer, &buffer, PyBUF_FORMAT|PyBUF_ND|PyBUF_C_CONTIGUOUS)) {
+        length = buffer.len;
+        src = buffer.buf;
+    } else {
+        // Nothing we can use
+        mc_err(UnsupportedInputFormat);
         return -1;
+    }
+
+    if (mc_err(mc_sw_buf_open(&(dev_obj->dev_handle), length, src, &(self->buf_handle)))) {
+        return -1;
+    }
+
+    if (src != NULL) {
+        PyBuffer_Release(&buffer);
     }
 
     self->length = length;
@@ -622,6 +643,30 @@ static PyTypeObject BufferType = {
     .tp_as_buffer = &BufferProcs,
 };
 
+int to_buffer(PyObject* possible_buffer, Device* dev, Buffer** buffer) {
+    // The input is either
+    // 1. Already a metalcompute Buffer*, if so give and return 0;
+    // 2. A python object which can expose a buffer
+    //    If so create and give a temporary metalcompute buffer with a copy of the data and return 0
+    // 3. Something else. Return -1
+    if (possible_buffer->ob_type == &BufferType) {
+        *buffer = (Buffer*)possible_buffer;
+        return 0;
+    }
+
+    // Create a new Buffer* and copy the data to it
+    PyObject *bufferArgList = Py_BuildValue("OO", dev, possible_buffer);
+    Buffer *newBufferObj = (Buffer*)PyObject_CallObject((PyObject *) &BufferType, bufferArgList);
+    Py_DECREF(bufferArgList);
+
+    if (newBufferObj != NULL) {
+        *buffer = newBufferObj;
+        return 0;
+    }
+
+    return -1; // Failed
+}
+
 static int
 Run_init(Run *self, PyObject *args, PyObject *kwds)
 {
@@ -650,17 +695,21 @@ Run_init(Run *self, PyObject *args, PyObject *kwds)
 
     // Allocate space to hold pointers to buffers
     self->run_handle.bufs = (mc_buf_handle**)malloc(buffer_count * sizeof(mc_buf_handle*));  
+    PyObject* tuple_bufs = PyTuple_New(buffer_count);
     for (int i = 0; i < buffer_count; i++) {
-        Buffer* buf = (Buffer*)PyTuple_GetItem(arg_tuple, i+1);
+        PyObject* pos_buf = PyTuple_GetItem(arg_tuple, i+1);
 
-        if (((PyObject*)buf)->ob_type != &BufferType) {
-            mc_err(NotReadyToRun);
+        Buffer* buf;
+        if (to_buffer(pos_buf, fn_obj->kern_obj->dev_obj, &buf)) {
             free(self->run_handle.bufs);
+            Py_DECREF(tuple_bufs);
             return -1;
         }
 
         // TODO: Should check here that the buffer is from the same Metal device
         self->run_handle.bufs[i] = &(buf->buf_handle);
+        Py_INCREF(buf);
+        PyTuple_SetItem(tuple_bufs, i, (PyObject*)buf);
     }
 
     if (mc_err(mc_sw_run_open(
@@ -674,8 +723,7 @@ Run_init(Run *self, PyObject *args, PyObject *kwds)
     self->fn_obj = fn_obj;
     Py_INCREF(fn_obj);
     // Keep this so that we have reference to all argument objects
-    self->tuple_bufs = arg_tuple;
-    Py_INCREF(arg_tuple);
+    self->tuple_bufs = tuple_bufs;
 
     return 0;
 }

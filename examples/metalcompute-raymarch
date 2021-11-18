@@ -79,9 +79,6 @@ uniforms = array('f',
 
 dev = mc.Device(args.dev)
 print(f"Device:{dev}")
-in_buf = dev.buffer(4*len(uniforms))
-in_buf_mv = memoryview(in_buf).cast('f')
-in_buf_mv[:] = uniforms
 image = dev.buffer(args.height * args.width * 4)
 
 raymarch_steps = 300
@@ -89,7 +86,7 @@ kernel = kernel_start + kernel_step * raymarch_steps + kernel_end
 render_fn = dev.kernel(kernel).function("test")
 
 start = now()
-render_fn(args.width * args.height, in_buf, image)
+render_fn(args.width * args.height, uniforms, image)
 end = now()
 
 print(f"Render took {end-start:1.6}s")

@@ -64,13 +64,15 @@ function_name = "test"
 kernel_fn = dev.kernel(program).function(function_name)
 # Will raise exception with details if metal kernel has errors
 
-in_buffer = dev.buffer(in_size)
-out_buffer = dev.buffer(out_size)
+buf_0 = array('f',[1.0,3.14159]) # Any python buffer object
+buf_n = dev.buffer(out_size) 
 # Allocate metal buffers for input and output (must be compatible with kernel)
+# Input buffers can be dev.buffer or python buffers (will be copied)
+# Output buffers must be dev.buffer
 # Buffer objects support python buffer protocol
 # Can be modified or read using e.g. memoryview, numpy.frombuffer
 
-kernel_fn(in_buffer, out_buffer, kernel_call_count)
+kernel_fn(kernel_call_count, buf_0, ..., buf_n)
 # Run the kernel once with supplied input data, 
 # filling supplied output data
 # Specify number of kernel calls

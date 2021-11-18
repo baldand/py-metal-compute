@@ -46,9 +46,7 @@ for device_index, device in enumerate(devices):
     steps = 700
     fn = dev.kernel(kernel_start+kernel_step*steps+kernel_end)\
         .function("test")
-    in_buf = dev.buffer(4)
-    in_buf_mv = memoryview(in_buf).cast('f')
-    in_buf_mv[0] = 0.42
+    in_buf = array('f',[0.42])
     out_buf = dev.buffer(4*count)
     fn(count, in_buf, out_buf) # Run once to warm up
     fn(count, in_buf, out_buf) # Rerun with same data

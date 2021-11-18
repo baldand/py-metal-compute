@@ -24,9 +24,7 @@ invalid_program
 dev = mc.Device()
 
 count = 1234567
-in_buf = dev.buffer(count*4)
-in_buf_mv = memoryview(in_buf).cast('f')
-in_buf_mv[:] = array('f',range(count))
+in_buf = array('f',range(count)) # Can use as-is for input
 out_buf = dev.buffer(count*4)
 out_buf_mv = memoryview(out_buf).cast('f')
 
@@ -58,7 +56,7 @@ fn_good(count, in_buf, out_buf)
 e1 = now()
 
 s2 = now()
-oref = array('f',[math.sin(value) for value in in_buf_mv])
+oref = array('f',[math.sin(value) for value in in_buf])
 e2 = now()
 
 print("Expected value:",oref[-1], "Received value:",out_buf_mv[-1])
