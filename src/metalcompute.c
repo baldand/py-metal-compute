@@ -582,16 +582,15 @@ Buffer_str(Buffer* self)
 
 int Buffer_getbuffer(Buffer *self, Py_buffer *view, int flags) {
     view->buf = self->buf_handle.buf;
-    ((uint8_t*)(view->buf))[0] = 42;
     view->obj = (PyObject*)self;
     Py_INCREF(view->obj);
     view->len = self->buf_handle.length;
     view->readonly = false;
-    view->itemsize = self->buf_handle.length;
+    view->itemsize = 1; 
     view->format = NULL; // 'B'
-    view->ndim = 0;
+    view->ndim = 1;
     view->strides = NULL;
-    view->shape = NULL;
+    view->shape = (Py_ssize_t*)&(self->length);
     view->strides = NULL;
     view->suboffsets = NULL;
     self->exports++;
