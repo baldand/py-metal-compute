@@ -444,25 +444,26 @@ var mc_cbs:[Int64:mc_sw_cb] = [:]
         dev_handle: UnsafePointer<mc_dev_handle>, 
         kern_handle: UnsafePointer<mc_kern_handle>, 
         fn_handle: UnsafePointer<mc_fn_handle>, 
-        buf_in_handle: UnsafeMutablePointer<mc_buf_handle>,
-        buf_out_handle: UnsafeMutablePointer<mc_buf_handle>,
-        kcount:Int64,
         run_handle: UnsafeMutablePointer<mc_run_handle>) -> RetCode {
     guard let sw_dev = mc_devs[dev_handle[0].id] else { return DeviceNotFound }
     guard let sw_kern = sw_dev.kerns[kern_handle[0].id] else { return KernelNotFound }
     guard let sw_fn = sw_kern.fns[fn_handle[0].id] else { return FunctionNotFound }
-    guard let sw_buf_in = sw_dev.bufs[buf_in_handle[0].id] else { return BufferNotFound }
-    guard let sw_buf_out = sw_dev.bufs[buf_out_handle[0].id] else { return BufferNotFound }
     guard let commandBuffer = sw_dev.queue.makeCommandBuffer() else { return CannotCreateCommandBuffer }
     guard let encoder = commandBuffer.makeComputeCommandEncoder() else { return CannotCreateCommandEncoder }
 
     do {
         let pipelineState = try sw_dev.dev.makeComputePipelineState(function:sw_fn.fn)
         encoder.setComputePipelineState(pipelineState);
-        encoder.setBuffer(sw_buf_in.buf, offset: 0, index: 0)
-        encoder.setBuffer(sw_buf_out.buf, offset: 0, index: 1)
+
+        for index in 0..<Int(run_handle[0].buf_count) {
+            guard let buf_index = run_handle[0].bufs[index] else { return BufferNotFound }
+            guard let sw_buf = sw_dev.bufs[buf_index[0].id] else { return BufferNotFound }
+            encoder.setBuffer(sw_buf.buf, offset: 0, index: index)
+        }
+
         let w = pipelineState.threadExecutionWidth
         let h = pipelineState.maxTotalThreadsPerThreadgroup / w
+        let kcount = run_handle[0].kcount
         let numThreadgroups = MTLSize(width: (Int(kcount)+(w*h-1))/(w*h), height: 1, depth: 1)
         let threadsPerThreadgroup = MTLSize(width: w*h, height: 1, depth: 1)
         encoder.dispatchThreadgroups(numThreadgroups, threadsPerThreadgroup: threadsPerThreadgroup)

@@ -50,12 +50,12 @@ for device_index, device in enumerate(devices):
     in_buf_mv = memoryview(in_buf).cast('f')
     in_buf_mv[0] = 0.42
     out_buf = dev.buffer(4*count)
-    fn(in_buf, out_buf, count) # Run once to warm up
-    fn(in_buf, out_buf, count) # Rerun with same data
+    fn(count, in_buf, out_buf) # Run once to warm up
+    fn(count, in_buf, out_buf) # Rerun with same data
 
     reps=10
     start = now()
-    [fn(in_buf, out_buf, count) for i in range(reps)] # Profile this time
+    [fn(count, in_buf, out_buf) for i in range(reps)] # Profile this time
     end = now()
 
     ops_per_kernel = steps * 4 * 2048 + 15

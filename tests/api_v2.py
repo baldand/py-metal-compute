@@ -34,7 +34,7 @@ np_buf_out = np.frombuffer(buf_out, dtype=np.uint8).reshape(dim,dim)
 
 start = now()
 # Calls to "test" will not block until the returned handles are released
-handles = [test(buf_in, buf_out, np_buf_out.size) for i in range(reps)]
+handles = [test(np_buf_out.size, buf_in, buf_out) for i in range(reps)]
 # Now that all calls are queued, release the handles to block until all completed
 del handles
 end = now()

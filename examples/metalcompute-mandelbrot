@@ -78,7 +78,7 @@ args_buf_mv[0] = args.width
 args_buf_mv[1] = args.width
 
 start_render = now()
-render_fn(args_buf, image, args.width * args.height)
+render_fn(args.width * args.height, args_buf, image)
 end_render = now()
 
 print(f"Render took {end_render - start_render:3.6}s")

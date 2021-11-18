@@ -43,6 +43,7 @@ const RetCode RunNotFound = -1005;
 // Python level errors
 const RetCode FirstArgumentNotDevice = -2000;
 const RetCode FirstArgumentNotKernel = -2001;
+const RetCode CountNotGiven = -2002;
 
 // Buffer formats
 const long FormatUnknown = -1;
@@ -93,6 +94,7 @@ RetCode mc_err(RetCode ret) {
             // Python level errors
             case FirstArgumentNotDevice: errString = "First argument should be a metalcompute.Device object"; break;
             case FirstArgumentNotKernel: errString = "First argument should be a metalcompute.Kernel object"; break;
+            case CountNotGiven: errString = "First argument should be an integer kernel count"; break;
             // C level errors below
         }
 
@@ -580,14 +582,18 @@ Buffer_str(Buffer* self)
 
 int Buffer_getbuffer(Buffer *self, Py_buffer *view, int flags) {
     view->buf = self->buf_handle.buf;
+    ((uint8_t*)(view->buf))[0] = 42;
     view->obj = (PyObject*)self;
     Py_INCREF(view->obj);
     view->len = self->buf_handle.length;
     view->readonly = false;
-    view->itemsize = 1;
+    view->itemsize = self->buf_handle.length;
     view->format = NULL; // 'B'
-    view->ndim = 1;
-
+    view->ndim = 0;
+    view->strides = NULL;
+    view->shape = NULL;
+    view->strides = NULL;
+    view->suboffsets = NULL;
     self->exports++;
 
     return 0;
@@ -628,37 +634,49 @@ Run_init(Run *self, PyObject *args, PyObject *kwds)
         return -1;
     }
 
-    Buffer* buf_in;
-    Buffer* buf_out;
-    int64_t kcount;
-
-    if (!PyArg_ParseTuple(arg_tuple, "OOL", &buf_in, &buf_out, &kcount)) {
+    int64_t buffer_count = (int64_t)PyTuple_Size(arg_tuple) - 1;
+    self->run_handle.buf_count = buffer_count;
+    if (buffer_count <= 0) {
+        mc_err(BufferNotFound);
         return -1;
     }
 
-    if (((PyObject*)buf_in)->ob_type != &BufferType) {
-        mc_err(NotReadyToRun);
+    // Get count  
+    PyObject* first = PyTuple_GetItem(arg_tuple, 0);
+    if (PyNumber_Check(first) != 1) {
+        mc_err(CountNotGiven);
         return -1;
     }
+    self->run_handle.kcount = PyLong_AsLongLong(PyNumber_Long(first));
 
-    if (((PyObject*)buf_out)->ob_type != &BufferType) {
-        mc_err(NotReadyToRun);
-        return -1;
+    // Allocate space to hold pointers to buffers
+    self->run_handle.bufs = (mc_buf_handle**)malloc(buffer_count * sizeof(mc_buf_handle*));  
+    for (int i = 0; i < buffer_count; i++) {
+        Buffer* buf = (Buffer*)PyTuple_GetItem(arg_tuple, i+1);
+
+        if (((PyObject*)buf)->ob_type != &BufferType) {
+            mc_err(NotReadyToRun);
+            free(self->run_handle.bufs);
+            return -1;
+        }
+
+        // TODO: Should check here that the buffer is from the same Metal device
+        self->run_handle.bufs[i] = &(buf->buf_handle);
     }
 
     if (mc_err(mc_sw_run_open(
         &(fn_obj->kern_obj->dev_obj->dev_handle),
         &(fn_obj->kern_obj->kern_handle),
         &(fn_obj->fn_handle),
-        &(buf_in->buf_handle),
-        &(buf_out->buf_handle), 
-        kcount,
         &(self->run_handle)))) {
         return -1;
     }
 
     self->fn_obj = fn_obj;
     Py_INCREF(fn_obj);
+    // Keep this so that we have reference to all argument objects
+    self->tuple_bufs = arg_tuple;
+    Py_INCREF(arg_tuple);
 
     return 0;
 }
@@ -668,6 +686,7 @@ Run_dealloc(Run *self)
 {
     if (self->run_handle.id != 0) {
         mc_sw_run_close(&(self->run_handle));
+        Py_DECREF(self->tuple_bufs);
         Py_DECREF(self->fn_obj);
     }
     Py_TYPE(self)->tp_free((PyObject *) self);

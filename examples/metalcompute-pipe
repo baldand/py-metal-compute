@@ -20,22 +20,15 @@ dev = mc.Device()
 pipe_fn = dev.kernel(kernel).function("pipe")
 
 while 1:
-    in_data = bytes(sys.stdin.buffer.read())
-    #print(len(in_data))
+    in_data = sys.stdin.buffer.read()
     if len(in_data) > 0:
         in_buf = dev.buffer(len(in_data))
         in_buf_mv = memoryview(in_buf).cast('B')
         in_buf_mv[:] = in_data
-        #print(in_buf_mv[0])
-        #in_buf_mv[:] = memoryview(in_data).cast('B')
-        #print(memoryview(in_buf).cast('B'))
         out_buf = dev.buffer(len(in_data))
         pipe_fn(in_buf, out_buf, len(in_data))
         out_buf_mv = memoryview(out_buf).cast('B')
-        #print(out_buf_mv[0])
-        #print(len(memoryview(out_buf)))
-        #sys.stdout.buffer.write(out_buf)
-        pass
+        sys.stdout.buffer.write(out_buf)
     else:
         break
 

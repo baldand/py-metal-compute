@@ -76,12 +76,13 @@ kernel_fn(in_buffer, out_buffer, kernel_call_count)
 # Specify number of kernel calls
 # Will block until data available
 
-handle = kernel_fn(in_buffer, out_buffer, kernel_call_count)
-# Run the kernel once with supplied input data, 
-# filling supplied output data
+handle = kernel_fn(kernel_call_count, buf_0, ..., buf_n)
+# Run the kernel once, 
 # Specify number of kernel calls
+# Supply all needed buffers
 # Will return immediately, before kernel runs, 
 # allowing additional kernels to be queued
+# Do not modify or read buffers until kernel completed!
 
 del handle
 # Block until previously queued kernel has completed

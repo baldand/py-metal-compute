@@ -89,7 +89,7 @@ kernel = kernel_start + kernel_step * raymarch_steps + kernel_end
 render_fn = dev.kernel(kernel).function("test")
 
 start = now()
-render_fn(in_buf, image, args.width * args.height)
+render_fn(args.width * args.height, in_buf, image)
 end = now()
 
 print(f"Render took {end-start:1.6}s")

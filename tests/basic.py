@@ -24,10 +24,10 @@ invalid_program
 dev = mc.Device()
 
 count = 1234567
-in_buf = dev.buffer(count)
+in_buf = dev.buffer(count*4)
 in_buf_mv = memoryview(in_buf).cast('f')
-in_buf_mv[:] = range(count)
-out_buf = dev.buffer(count)
+in_buf_mv[:] = array('f',range(count))
+out_buf = dev.buffer(count*4)
 out_buf_mv = memoryview(out_buf).cast('f')
 
 # Compile errors are returned in exception when compiling invalid programs
@@ -54,11 +54,11 @@ print("Calculating sin of",count,"values")
 s1 = now()
 
 # This should work. Arrays must be 1D float at the moment
-fn_good(in_buf, out_buf, count)
+fn_good(count, in_buf, out_buf)
 e1 = now()
 
 s2 = now()
-oref = array('f',[math.sin(value) for value in i])
+oref = array('f',[math.sin(value) for value in in_buf_mv])
 e2 = now()
 
 print("Expected value:",oref[-1], "Received value:",out_buf_mv[-1])

@@ -54,6 +54,9 @@ typedef struct {
 
 typedef struct {
     int64_t id;
+    int64_t kcount;
+    int64_t buf_count;
+    mc_buf_handle** bufs;
 } mc_run_handle;
 
 RetCode mc_sw_dev_open(uint64_t device_index, mc_dev_handle* dev_handle);
@@ -65,7 +68,5 @@ RetCode mc_sw_fn_close(const mc_dev_handle* dev_handle, const mc_kern_handle* ke
 RetCode mc_sw_buf_open(const mc_dev_handle* dev_handle, uint64_t length, mc_buf_handle* buf_handle);
 RetCode mc_sw_buf_close(const mc_dev_handle* dev_handle, mc_buf_handle* buf_handle);
 RetCode mc_sw_run_open(const mc_dev_handle* dev_handle, const mc_kern_handle* kern_handle,
-                     const mc_fn_handle* fn_handle, const mc_buf_handle* buf_in_handle,
-                     const mc_buf_handle* buf_out_handle, uint64_t kcount,
-                     mc_run_handle* run_handle);
+                     const mc_fn_handle* fn_handle, mc_run_handle* run_handle);
 RetCode mc_sw_run_close(const mc_run_handle* run_handle);
