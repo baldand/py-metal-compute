@@ -96,10 +96,12 @@ del handle
 ### Measure TFLOPS of GPU
 
 ```
-> metalcompute-measure-flops
+> metalcompute-measure
 Using device: Apple M1 (unified memory=True)
 Running compute intensive Metal kernel to measure TFLOPS...
-Estimated GPU TFLOPS: 2.55613
+Estimated GPU TFLOPS: 2.53236
+Running compute intensive Metal kernel to measure data transfer rate...
+Data transfer rate: 58.7291 GB/s
 ```
 
 ### Render a 3D image with raymarching

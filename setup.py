@@ -55,7 +55,7 @@ setup(name="metalcompute",
         libraries=["swiftFoundation","swiftMetal"],
         extra_objects=["build/swift/metalcomputeswift.a"])],
     scripts=["examples/metalcompute-mandelbrot", 
-             "examples/metalcompute-measure-flops",
+             "examples/metalcompute-measure",
              "examples/metalcompute-raymarch",
              "examples/metalcompute-pipe"]
     )
