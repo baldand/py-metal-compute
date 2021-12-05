@@ -556,11 +556,13 @@ Buffer_init(Buffer *self, PyObject *args, PyObject *kwds)
     }
 
     // Is the argument an integer length?
-    if (PyNumber_Check(length_or_buffer) == 1) {
+    PyObject* as_long = PyNumber_Long(length_or_buffer);
+    PyErr_Clear();
+    if (as_long != NULL) {
         // Yes
-        length = PyLong_AsLongLong(PyNumber_Long(length_or_buffer));
+        length = PyLong_AsLongLong(as_long);
         src = NULL;
-    } else if (!PyObject_GetBuffer(length_or_buffer, &buffer, PyBUF_FORMAT|PyBUF_ND|PyBUF_C_CONTIGUOUS)) {
+    } else if (!PyObject_GetBuffer(length_or_buffer, &buffer, PyBUF_ND)) {
         length = buffer.len;
         src = buffer.buf;
     } else {
