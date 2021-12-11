@@ -27,7 +27,7 @@ class build(build_module.build_ext):
         build_module.build_ext.run(self)
 
 setup(name="metalcompute",
-    version="0.2.1",
+    version="0.2.2",
     author="Andrew Baldwin",
     author_email="metalcompute@dehabit.info",
     description="A python library to run metal compute kernels on macOS",
