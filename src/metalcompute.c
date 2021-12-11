@@ -39,6 +39,7 @@ const RetCode FunctionNotFound = -1002;
 const RetCode CouldNotMakeBuffer = -1003;
 const RetCode BufferNotFound = -1004;
 const RetCode RunNotFound = -1005;
+const RetCode DeviceBuffersAllocated = -1006;
 
 // Python level errors
 const RetCode FirstArgumentNotDevice = -2000;
@@ -91,6 +92,7 @@ RetCode mc_err(RetCode ret) {
             case CouldNotMakeBuffer: errString = "Could not make buffer"; break;
             case BufferNotFound: errString = "Buffer not found"; break;
             case RunNotFound: errString = "Run not found"; break;
+            case DeviceBuffersAllocated: errString = "Device closed while buffers still allocated"; break;
             // Python level errors
             case FirstArgumentNotDevice: errString = "First argument should be a metalcompute.Device object"; break;
             case FirstArgumentNotKernel: errString = "First argument should be a metalcompute.Kernel object"; break;
@@ -653,6 +655,7 @@ int to_buffer(PyObject* possible_buffer, Device* dev, Buffer** buffer) {
     // 3. Something else. Return -1
     if (possible_buffer->ob_type == &BufferType) {
         *buffer = (Buffer*)possible_buffer;
+        Py_INCREF(*buffer); // Take a new reference to the existing buffer
         return 0;
     }
 
@@ -710,7 +713,6 @@ Run_init(Run *self, PyObject *args, PyObject *kwds)
 
         // TODO: Should check here that the buffer is from the same Metal device
         self->run_handle.bufs[i] = &(buf->buf_handle);
-        Py_INCREF(buf);
         PyTuple_SetItem(tuple_bufs, i, (PyObject*)buf);
     }
 

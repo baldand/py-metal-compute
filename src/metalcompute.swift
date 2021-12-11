@@ -35,6 +35,7 @@ let FunctionNotFound:RetCode = -1002
 let CouldNotMakeBuffer:RetCode = -1003
 let BufferNotFound:RetCode = -1004
 let RunNotFound:RetCode = -1005
+let DeviceBuffersAllocated:RetCode = -1006
 
 // Buffer formats
 let FormatUnknown = -1
@@ -331,9 +332,9 @@ var mc_cbs:[Int64:mc_sw_cb] = [:]
 }
 
 @_cdecl("mc_sw_dev_close") public func mc_sw_dev_close(handle: UnsafeMutablePointer<mc_dev_handle>) -> RetCode {
-    guard mc_devs.removeValue(forKey: handle[0].id) != nil else {
-        return DeviceNotFound
-    }
+    guard let sw_dev = mc_devs[handle[0].id] else { return DeviceNotFound }
+    guard sw_dev.bufs.count == 0 else { return DeviceBuffersAllocated }
+    mc_devs.removeValue(forKey: handle[0].id)
     return Success
 }
 
@@ -447,6 +448,7 @@ var mc_cbs:[Int64:mc_sw_cb] = [:]
     guard sw_dev.bufs.removeValue(forKey: buf_handle[0].id) != nil else {
         return BufferNotFound
     }
+    
     return Success
 }
 
