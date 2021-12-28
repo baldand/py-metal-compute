@@ -240,6 +240,9 @@ class mc_sw_buf {
     init(_ buf:MTLBuffer) {
         self.buf = buf
     }
+    deinit {
+        self.buf.setPurgeableState(MTLPurgeableState.empty)
+    }
 }
 
 class mc_sw_fn {
