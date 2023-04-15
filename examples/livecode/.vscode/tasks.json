@@ -1,0 +1,44 @@
+{
+    // See https://go.microsoft.com/fwlink/?LinkId=733558
+    // for the documentation about the tasks.json format
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "1. Run LiveMetal server",
+            "type": "process",
+            "command": "${command:python.interpreterPath}",
+            "args": ["livemetal.py","shader.metal"],
+            "isBackground": true,
+            "problemMatcher": {
+                "owner": "metal",
+                "fileLocation": ["relative", "${workspaceFolder}"],
+                "pattern": {
+                  "regexp": "^(.*):(\\d+):(\\d+):\\s+(warning|error):\\s+(.*)$",
+                  "file": 1,
+                  "line": 2,
+                  "column": 3,
+                  "severity": 4,
+                  "message": 5
+                },
+                "background": {
+                    "activeOnStart": false,
+                    "beginsPattern": "^Compiling\\[\\d+\\]:",
+                    "endsPattern": "^Complete\\[\\d+\\]\\.",
+                }
+            },
+        },
+        {
+            "label": "2. View LiveMetal page",
+            "command": "${input:openSimpleBrowser}",
+            "problemMatcher": []
+        }
+    ],
+    "inputs": [
+        {
+          "id": "openSimpleBrowser",
+          "type": "command",
+          "command": "simpleBrowser.show",
+          "args": ["http://localhost:1173"]
+        }
+      ]
+}
