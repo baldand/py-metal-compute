@@ -129,6 +129,14 @@ Image encoding took 1.35182s
 
 ![Mandelbrot set](images/mandelbrot.jpg)
 
+### Livecoding visual kernels in VSCode
+
+There is an example script to allow livecoding of visual metal kernels entirely within VSCode using a localhost http server to render frames.
+
+It also includes syntax error highlighting in the editor.
+
+See [livemetal.py](examples/livecode)
+
 ## Status
 
 This is a preview version. 

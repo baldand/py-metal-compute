@@ -35,7 +35,7 @@ kernel void test(const device float *in [[ buffer(0) ]],
     out[id] = v;
 }
     """
-    count = 1024*64
+    count = 8*1024*64
 
     print("Running compute intensive Metal kernel to measure TFLOPS...")
     dev = mc.Device(device_index)

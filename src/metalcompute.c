@@ -558,15 +558,17 @@ Buffer_init(Buffer *self, PyObject *args, PyObject *kwds)
     }
 
     // Is the argument an integer length?
+
     PyObject* as_long = PyNumber_Long(length_or_buffer);
+    int possible_buffer = PyObject_CheckBuffer(length_or_buffer);
     PyErr_Clear();
-    if (as_long != NULL) {
+    if (possible_buffer && !PyObject_GetBuffer(length_or_buffer, &buffer, PyBUF_ND)) {
+        length = buffer.len;
+        src = buffer.buf;
+    } else if (as_long != NULL) {
         // Yes
         length = PyLong_AsLongLong(as_long);
         src = NULL;
-    } else if (!PyObject_GetBuffer(length_or_buffer, &buffer, PyBUF_ND)) {
-        length = buffer.len;
-        src = buffer.buf;
     } else {
         // Nothing we can use
         mc_err(UnsupportedInputFormat);
