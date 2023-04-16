@@ -17,8 +17,8 @@ with open("README.md", "r", encoding="utf-8") as fh:
 def build_swift():
     print("Building swift object files")
     os.system("mkdir -p build/swift")
-    os.system("swiftc src/metalcompute.swift -I src -static -emit-library -target arm64-apple-macos11 -o build/swift/metalcomputeswiftarm.a")
-    os.system("swiftc src/metalcompute.swift -I src -static -emit-library -target x86_64-apple-macos11 -o build/swift/metalcomputeswiftx64.a")
+    os.system("swiftc -parse-as-library -c src/metalcompute.swift -I src -target arm64-apple-macos11 -o build/swift/metalcomputeswiftarm.a")
+    os.system("swiftc -parse-as-library -c src/metalcompute.swift -I src -target x86_64-apple-macos11 -o build/swift/metalcomputeswiftx64.a")
     os.system("lipo -create build/swift/metalcomputeswiftarm.a build/swift/metalcomputeswiftx64.a -o build/swift/metalcomputeswift.a")
 
 class build(build_module.build_ext):
@@ -27,7 +27,7 @@ class build(build_module.build_ext):
         build_module.build_ext.run(self)
 
 setup(name="metalcompute",
-    version="0.2.3",
+    version="0.2.4",
     author="Andrew Baldwin",
     author_email="metalcompute@dehabit.info",
     description="A python library to run metal compute kernels on macOS",
