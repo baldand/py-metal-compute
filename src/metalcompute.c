@@ -721,8 +721,11 @@ Run_init(Run *self, PyObject *args, PyObject *kwds)
         &(fn_obj->kern_obj->kern_handle),
         &(fn_obj->fn_handle),
         &(self->run_handle)))) {
+        free(self->run_handle.bufs);
         return -1;
     }
+
+    free(self->run_handle.bufs);
 
     self->fn_obj = fn_obj;
     Py_INCREF(fn_obj);
