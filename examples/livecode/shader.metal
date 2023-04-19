@@ -22,7 +22,7 @@ kernel void render(const device float *uniform [[ buffer(0) ]],
     float speed = 0.1;
     time = speed*time + 1.2*sin(speed*time*0.3828);
 
-    float amp = 0.8+0.4*sin(time*0.119281);
+    float amp = 0.8+0.2*sin(time*9.119281);
     float2 c = float2(
         amp*sin(time),
         amp*cos(time));

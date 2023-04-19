@@ -24,7 +24,9 @@ class MetalViewHTTPServer:
         self.start = time.time()
         self.running = 1.0
         self.dev = mc.Device()
-        self.image = self.dev.buffer((self.args.height * self.args.width * 4))
+        self.image = None
+        self.width = None
+        self.height = None
         self.ui_running = False
         self.last_modified = None
         self.count = 0
@@ -33,8 +35,6 @@ class MetalViewHTTPServer:
     def parseargs(self):
         parser = argparse.ArgumentParser()
         parser.add_argument("shader_file",help="Metal shader file to watch")
-        parser.add_argument("-width",default=1280,help="Width of images")
-        parser.add_argument("-height",default=720,help="Height of images")
         self.args = parser.parse_args()
 
     def update_shader(self):
@@ -58,16 +58,64 @@ class MetalViewHTTPServer:
         <html style="margin:0;overflow:clip;width:100%;height:100%;background:black;">
         <head>
         <script>
+        let now = 0;
+        let last_timestamp = 0;
+        let running = true;
+        let started = false;
+        let raf_handle = 0;
+        let frame_scale = 2;
+        let data = 0;
+        let canvas = 0;
+        let ctx = 0;
+        function update() {
+            let b = document.getElementById("state");
+            let fps = document.getElementById("fps");
+            let s = document.getElementById("scale");
+            if (running) {
+                b.innerText = "Pause";
+                s.innerText = frame_scale+"x";
+            } else {
+                b.innerText = "Play";
+                fps.innerText = "0.00";
+                s.innerText = frame_scale+"x";
+            }
+        }
+        function scale(event) {
+            frame_scale = frame_scale * 2
+            if (frame_scale == 16) frame_scale = 1;
+        }
+        function toggle(event) {
+            if (event.type != "pointerdown") return;
+            running = !running;
+            if (running) {
+                started = true;
+                queueRaf();
+            }
+            update();
+        }
         function queueRaf() {
-            window.requestAnimationFrame(raf);
+            update();
+            if (running && raf_handle==0) {
+                raf_handle = window.requestAnimationFrame(raf);
+            }
         }
         function sleep(ms) {
             return new Promise( resolve => setTimeout (resolve, ms));
         }
         async function raf(timestamp) {
+            let timediff = timestamp - last_timestamp;
+            if ((timediff>0)&&(!started)) {
+                now += timediff;
+            }
+            last_timestamp = timestamp;
+            started = false;
+            raf_handle = 0;
             let response;
+            // Get current real size of canvas element
+            let width = (canvas.clientWidth * window.devicePixelRatio) / frame_scale;
+            let height = (canvas.clientHeight * window.devicePixelRatio) / frame_scale;
             try {
-                response = await fetch('video');
+                response = await fetch('video?t='+now+'&w='+width+'&h='+height);
                 if ((response.status < 200)||(response.status >= 300)) {
                     // Delay to balance responsiveness & power consumption
                     await sleep(100);
@@ -84,19 +132,43 @@ class MetalViewHTTPServer:
             //console.log(response);
             const buf = await response.arrayBuffer();
             const view = new Uint8ClampedArray(buf);
-            const canvas = document.getElementById("canvas");
-            const ctx = canvas.getContext("2d");
-            let data = ctx.getImageData(0,0,1280,720);
+            if ((width != canvas.width) || (height != canvas.height)) {
+                canvas.width = width;
+                canvas.height = height;
+                data = ctx.getImageData(0,0,width,height);
+            }
             data.data.set(view);
             ctx.putImageData(data,0,0);
             //console.log(response, data, buf, view);
+            let fps = document.getElementById("fps");
+            let tims = document.getElementById("time");
+            let s = document.getElementById("scale");
+            if (running) {
+                fps.innerText = (1000.0/(timediff)).toFixed(2);
+                time.innerText = (now*0.001).toFixed(3);
+                s.innerText = frame_scale+"x";
+            } else {
+                fps.innerText = "0.00";
+                time.innerText = (now*0.001).toFixed(3);
+                s.innerText = frame_scale+"x";
+            }
         }
         window.onload = async function (){
+            let state = document.getElementById("state");
+            canvas = document.getElementById("canvas");
+            ctx = canvas.getContext("2d");
+            state.addEventListener("pointerdown", toggle);
             queueRaf();
         };
         </script>
         </head>
         <body style="margin:0;overflow:clip;width:100%;height:100%;background:black;">
+        <div style="color:white;position:absolute;">
+            <button style="margin:3px;" id="scale" onclick="scale();"></button>
+            <button style="margin:3px;" id="state" onclick="toggle();">Pause</button>
+            <div style="margin:3px;">FPS:<span id="fps"></span></div>
+            <div style="margin:3px;">TIME:<span id="time"></span></div>
+        </div>
         <div style="
             width:100%;
             height:100%;
@@ -120,16 +192,33 @@ class MetalViewHTTPServer:
         """
         return web.Response(text=text, content_type="text/html")
 
-    def render(self):
-        uniforms = array('f',[self.args.height,self.args.width,time.time()-self.start])
-        self.shader_kernel(self.args.height*self.args.width, uniforms, self.image)
+    def create_image(self, height, width):
+        if self.height != height or self.width != width:
+            del self.image
+            self.image = None
+        if self.image is None:
+            self.height = height
+            self.width = width
+            self.image = self.dev.buffer((self.height * self.width * 4))
+            #print("new image", height, width)
+
+    def render(self, height, width, timestamp):
+        uniforms = array('f',[height,width,timestamp*0.001])
+        self.create_image(height, width)
+        start = time.time()
+        self.shader_kernel(height*width, uniforms, self.image)
+        end = time.time()
+        #print(end-start, width, height)
         return bytearray(self.image)
 
     async def video(self, request):
+        timestamp = float(request.query["t"])
+        width = int(float(request.query["w"]))
+        height = int(float(request.query["h"]))
         buf = bytes()
         try:
             self.update_shader()
-            buf = self.render()
+            buf = self.render(height, width, timestamp)
         except:
             pass
         return web.Response(body=buf, status=200, content_type="application/octet-stream")
