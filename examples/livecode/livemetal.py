@@ -67,6 +67,7 @@ class MetalViewHTTPServer:
         let data = 0;
         let canvas = 0;
         let ctx = 0;
+        let zoom = 0.0;
         function update() {
             let b = document.getElementById("state");
             let fps = document.getElementById("fps");
@@ -80,22 +81,27 @@ class MetalViewHTTPServer:
                 s.innerText = frame_scale+"x";
             }
         }
-        function scale(event) {
+        function cyclescale(event) {
+            event.preventDefault();
+            if (event.type != "pointerdown") return;
             frame_scale = frame_scale * 2
             if (frame_scale == 16) frame_scale = 1;
+            queueRaf(true);
         }
         function toggle(event) {
+            event.preventDefault();
             if (event.type != "pointerdown") return;
             running = !running;
             if (running) {
                 started = true;
                 queueRaf();
+            } else {
+                update();
             }
-            update();
         }
-        function queueRaf() {
+        function queueRaf(force=false) {
             update();
-            if (running && raf_handle==0) {
+            if ((running || force) && raf_handle==0) {
                 raf_handle = window.requestAnimationFrame(raf);
             }
         }
@@ -104,7 +110,7 @@ class MetalViewHTTPServer:
         }
         async function raf(timestamp) {
             let timediff = timestamp - last_timestamp;
-            if ((timediff>0)&&(!started)) {
+            if ((timediff>0)&&(!started)&&running) {
                 now += timediff;
             }
             last_timestamp = timestamp;
@@ -115,7 +121,7 @@ class MetalViewHTTPServer:
             let width = (canvas.clientWidth * window.devicePixelRatio) / frame_scale;
             let height = (canvas.clientHeight * window.devicePixelRatio) / frame_scale;
             try {
-                response = await fetch('video?t='+now+'&w='+width+'&h='+height);
+                response = await fetch('video?t='+now+'&w='+width+'&h='+height+'&z='+zoom);
                 if ((response.status < 200)||(response.status >= 300)) {
                     // Delay to balance responsiveness & power consumption
                     await sleep(100);
@@ -153,12 +159,26 @@ class MetalViewHTTPServer:
                 s.innerText = frame_scale+"x";
             }
         }
+        function resize(event) {
+            // Trigger new frame
+            queueRaf(true);
+        }
+        function zoomevent(event) {
+            event.preventDefault();
+            console.log(event);
+            zoom += 0.01*event.deltaY; 
+            queueRaf(true);
+        }
         window.onload = async function (){
-            let state = document.getElementById("state");
             canvas = document.getElementById("canvas");
+            canvas.addEventListener("wheel", zoomevent);
             ctx = canvas.getContext("2d");
+            let state = document.getElementById("state");
             state.addEventListener("pointerdown", toggle);
-            queueRaf();
+            let scale = document.getElementById("scale");
+            scale.addEventListener("pointerdown", cyclescale);
+            window.addEventListener("resize", resize)
+            queueRaf(true);
         };
         </script>
         </head>
@@ -202,8 +222,8 @@ class MetalViewHTTPServer:
             self.image = self.dev.buffer((self.height * self.width * 4))
             #print("new image", height, width)
 
-    def render(self, height, width, timestamp):
-        uniforms = array('f',[height,width,timestamp*0.001])
+    def render(self, height, width, timestamp, zoom):
+        uniforms = array('f',[height,width,timestamp*0.001, zoom])
         self.create_image(height, width)
         start = time.time()
         self.shader_kernel(height*width, uniforms, self.image)
@@ -215,10 +235,11 @@ class MetalViewHTTPServer:
         timestamp = float(request.query["t"])
         width = int(float(request.query["w"]))
         height = int(float(request.query["h"]))
+        zoom = float(request.query["z"])
         buf = bytes()
         try:
             self.update_shader()
-            buf = self.render(height, width, timestamp)
+            buf = self.render(height, width, timestamp, zoom)
         except:
             pass
         return web.Response(body=buf, status=200, content_type="application/octet-stream")
