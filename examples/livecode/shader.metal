@@ -7,19 +7,24 @@ kernel void render(const device float *uniform [[ buffer(0) ]],
     float width = uniform[1];
     float height = uniform[0];
     float time = uniform[2];
+    float zoom = uniform[3];
+    float2 center = float2(uniform[4],uniform[5]);
 
     // Calculate pixel coordinate
     int cx = id%int(width);
     int cy = int(id/int(width));
     // x -1 on left, +1 on right
-    float scale = 2.7;
+    float scale = 2.7*pow(2.0,zoom);
     float x = scale*(cx-(0.5*width))/height;
     // y -1 on bottom, +1 on right
     float y = -scale*(cy-(0.5*height))/height;
 
+    x += center.x;
+    y += center.y;
+
     // Render an interesting image using x,y,time
 
-    float speed = 0.1;
+    float speed = 0.01;
     time = speed*time + 1.2*sin(speed*time*0.3828);
 
     float amp = 0.8+0.2*sin(time*9.119281);
@@ -33,7 +38,7 @@ kernel void render(const device float *uniform [[ buffer(0) ]],
     float i = 0.0;
     float m_old = 0.0;
     float m_new = 0.0;
-    for (int iter=0;iter<200;iter++) {
+    for (int iter=0;iter<1000;iter++) {
         float2 z2 = float2(z.x*z.x-z.y*z.y+c.x,
                            2.0*z.x*z.y+c.y);   
         z = z2;
