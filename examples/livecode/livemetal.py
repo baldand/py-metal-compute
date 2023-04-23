@@ -67,6 +67,13 @@ class MetalViewHTTPServer:
         let data = 0;
         let canvas = 0;
         let ctx = 0;
+        let zoom = 0.0;
+        let x = 0.0;
+        let y = 0.0;
+        let basex = 0.0;
+        let basey = 0.0;
+        let panstartx = 0.0;
+        let panstarty = 0.0;
         function update() {
             let b = document.getElementById("state");
             let fps = document.getElementById("fps");
@@ -80,22 +87,27 @@ class MetalViewHTTPServer:
                 s.innerText = frame_scale+"x";
             }
         }
-        function scale(event) {
+        function cyclescale(event) {
+            event.preventDefault();
+            if (event.type != "pointerdown") return;
             frame_scale = frame_scale * 2
             if (frame_scale == 16) frame_scale = 1;
+            queueRaf(true);
         }
         function toggle(event) {
+            event.preventDefault();
             if (event.type != "pointerdown") return;
             running = !running;
             if (running) {
                 started = true;
                 queueRaf();
+            } else {
+                update();
             }
-            update();
         }
-        function queueRaf() {
+        function queueRaf(force=false) {
             update();
-            if (running && raf_handle==0) {
+            if ((running || force) && raf_handle==0) {
                 raf_handle = window.requestAnimationFrame(raf);
             }
         }
@@ -104,7 +116,7 @@ class MetalViewHTTPServer:
         }
         async function raf(timestamp) {
             let timediff = timestamp - last_timestamp;
-            if ((timediff>0)&&(!started)) {
+            if ((timediff>0)&&(!started)&&running) {
                 now += timediff;
             }
             last_timestamp = timestamp;
@@ -115,7 +127,9 @@ class MetalViewHTTPServer:
             let width = (canvas.clientWidth * window.devicePixelRatio) / frame_scale;
             let height = (canvas.clientHeight * window.devicePixelRatio) / frame_scale;
             try {
-                response = await fetch('video?t='+now+'&w='+width+'&h='+height);
+                response = await fetch('video?t='+now+'&w='
+                                        +width+'&h='+height
+                                        +'&z='+zoom+'&x='+x+'&y='+y);
                 if ((response.status < 200)||(response.status >= 300)) {
                     // Delay to balance responsiveness & power consumption
                     await sleep(100);
@@ -129,7 +143,6 @@ class MetalViewHTTPServer:
                 queueRaf();
                 return;
             }
-            //console.log(response);
             const buf = await response.arrayBuffer();
             const view = new Uint8ClampedArray(buf);
             if ((width != canvas.width) || (height != canvas.height)) {
@@ -139,7 +152,6 @@ class MetalViewHTTPServer:
             }
             data.data.set(view);
             ctx.putImageData(data,0,0);
-            //console.log(response, data, buf, view);
             let fps = document.getElementById("fps");
             let tims = document.getElementById("time");
             let s = document.getElementById("scale");
@@ -153,19 +165,75 @@ class MetalViewHTTPServer:
                 s.innerText = frame_scale+"x";
             }
         }
+        function resize(event) {
+            // Trigger new frame
+            queueRaf(true);
+        }
+        function zoomevent(event) {
+            event.preventDefault();
+            zoom += 0.01*event.deltaY; 
+            queueRaf(true);
+        }
+        function screen2norm(x, y) {
+            // Convert a screen x,y value into normalised -1<->+1 coordinates
+            // Need to check current CSS width/height of canvas
+            // and calculate aspect ratio from that
+            let canvas = document.getElementById("canvas");
+            let cw = canvas.clientWidth;
+            let ch = canvas.clientHeight;
+            let shortest = cw*0.5;
+            if (ch < cw) shortest = ch*0.5;
+            let cx = (x - cw*0.5)/shortest;
+            let cy = (y - ch*0.5)/shortest;
+            return [cx,-cy];
+        }
+        function panstart(event) {
+            let canvas = document.getElementById("canvas");
+            event.preventDefault();
+            canvas.setPointerCapture(event.pointerId);
+            canvas.addEventListener("pointermove", panmove)
+            let start = screen2norm(event.clientX, event.clientY);
+            panstartx = start[0];
+            panstarty = start[1];
+            basex = x;
+            basey = y;
+        }
+        function panend(event) {
+            let canvas = document.getElementById("canvas");
+            event.preventDefault();
+            canvas.releasePointerCapture(event.pointerId);
+            canvas.removeEventListener("pointermove", panmove)
+            let current = screen2norm(event.clientX, event.clientY);
+            x = basex + (panstartx-current[0])*Math.pow(2.0,zoom);
+            y = basey + (panstarty-current[1])*Math.pow(2.0,zoom);
+            queueRaf(true);
+        }
+        function panmove(event) {
+            event.preventDefault();
+            let current = screen2norm(event.clientX, event.clientY);
+            x = basex + (panstartx-current[0])*Math.pow(2.0,zoom);
+            y = basey + (panstarty-current[1])*Math.pow(2.0,zoom);
+            queueRaf(true);
+        }
         window.onload = async function (){
-            let state = document.getElementById("state");
             canvas = document.getElementById("canvas");
+            canvas.addEventListener("wheel", zoomevent);
+            canvas.addEventListener("pointerdown", panstart)
+            canvas.addEventListener("pointerup", panend)
             ctx = canvas.getContext("2d");
+            let state = document.getElementById("state");
             state.addEventListener("pointerdown", toggle);
-            queueRaf();
+            let scale = document.getElementById("scale");
+            scale.addEventListener("pointerdown", cyclescale);
+            window.addEventListener("resize", resize)
+            queueRaf(true);
         };
         </script>
         </head>
         <body style="margin:0;overflow:clip;width:100%;height:100%;background:black;">
         <div style="color:white;position:absolute;">
-            <button style="margin:3px;" id="scale" onclick="scale();"></button>
-            <button style="margin:3px;" id="state" onclick="toggle();">Pause</button>
+            <button style="margin:3px;" id="scale"></button>
+            <button style="margin:3px;" id="state">Pause</button>
             <div style="margin:3px;">FPS:<span id="fps"></span></div>
             <div style="margin:3px;">TIME:<span id="time"></span></div>
         </div>
@@ -202,8 +270,8 @@ class MetalViewHTTPServer:
             self.image = self.dev.buffer((self.height * self.width * 4))
             #print("new image", height, width)
 
-    def render(self, height, width, timestamp):
-        uniforms = array('f',[height,width,timestamp*0.001])
+    def render(self, height, width, timestamp, zoom, x, y):
+        uniforms = array('f',[height,width,timestamp*0.001, zoom, x, y])
         self.create_image(height, width)
         start = time.time()
         self.shader_kernel(height*width, uniforms, self.image)
@@ -215,10 +283,13 @@ class MetalViewHTTPServer:
         timestamp = float(request.query["t"])
         width = int(float(request.query["w"]))
         height = int(float(request.query["h"]))
+        zoom = float(request.query["z"])
+        x = float(request.query["x"])
+        y = float(request.query["y"])
         buf = bytes()
         try:
             self.update_shader()
-            buf = self.render(height, width, timestamp)
+            buf = self.render(height, width, timestamp, zoom, x, y)
         except:
             pass
         return web.Response(body=buf, status=200, content_type="application/octet-stream")
