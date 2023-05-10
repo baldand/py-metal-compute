@@ -1,6 +1,6 @@
 # Metalize
 
-Metalize is a library for python on macOS that lets you run simple python functions code very quickly on your GPU
+Metalize is a library for python on macOS that lets you run simple python functions very quickly on your GPU
 
 ## Simple example
 
