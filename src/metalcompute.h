@@ -1,6 +1,6 @@
 // Bridging header between C & Swift
 
-// C interface to Swift funtions
+// C interface to Swift functions
 
 // v0.1 API
 
