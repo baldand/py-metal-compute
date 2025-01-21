@@ -1,6 +1,6 @@
 import os
 
-os.environ['MACOSX_DEPLOYMENT_TARGET'] = '11.0'
+os.environ['MACOSX_DEPLOYMENT_TARGET'] = '14.0'
 
 try:
     from setuptools import setup, Extension
@@ -17,8 +17,8 @@ with open("README.md", "r", encoding="utf-8") as fh:
 def build_swift():
     print("Building swift object files")
     os.system("mkdir -p build/swift")
-    os.system("swiftc -parse-as-library -c src/metalcompute.swift -I src -target arm64-apple-macos11 -o build/swift/metalcomputeswiftarm.a")
-    os.system("swiftc -parse-as-library -c src/metalcompute.swift -I src -target x86_64-apple-macos11 -o build/swift/metalcomputeswiftx64.a")
+    os.system("swiftc -parse-as-library -c src/metalcompute.swift -I src -target arm64-apple-macos14 -o build/swift/metalcomputeswiftarm.a")
+    os.system("swiftc -parse-as-library -c src/metalcompute.swift -I src -target x86_64-apple-macos14 -o build/swift/metalcomputeswiftx64.a")
     os.system("lipo -create build/swift/metalcomputeswiftarm.a build/swift/metalcomputeswiftx64.a -o build/swift/metalcomputeswift.a")
 
 class build(build_module.build_ext):
@@ -27,7 +27,7 @@ class build(build_module.build_ext):
         build_module.build_ext.run(self)
 
 setup(name="metalcompute",
-    version="0.2.6",
+    version="0.2.7",
     author="Andrew Baldwin",
     author_email="metalcompute@dehabit.info",
     description="A python library to run metal compute kernels on macOS",
@@ -49,8 +49,8 @@ setup(name="metalcompute",
     ext_modules=[Extension(
         'metalcompute', 
         ['src/metalcompute.c'], 
-        extra_compile_args=["-mmacosx-version-min=11.0","-arch","arm64","-arch","x86_64","-Wno-unused-command-line-argument"],
-        extra_link_args=["-mmacosx-version-min=11.0","-arch","arm64","-arch","x86_64","-Wno-unused-command-line-argument"],
+        extra_compile_args=["-mmacosx-version-min=14.0","-arch","arm64","-arch","x86_64","-Wno-unused-command-line-argument"],
+        extra_link_args=["-mmacosx-version-min=14.0","-arch","arm64","-arch","x86_64","-Wno-unused-command-line-argument"],
         library_dirs=[".","/usr/lib","/usr/lib/swift"],
         libraries=["swiftFoundation","swiftMetal"],
         extra_objects=["build/swift/metalcomputeswift.a"])],
