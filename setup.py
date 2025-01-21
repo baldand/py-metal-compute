@@ -44,7 +44,7 @@ setup(name="metalcompute",
         "Operating System :: MacOS :: MacOS X",
         "Environment :: GPU",
     ],
-    python_requires=">=3.8",
+    python_requires=">=3.9",
     cmdclass = {'build_ext': build,},
     ext_modules=[Extension(
         'metalcompute', 
